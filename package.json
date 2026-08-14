@@ -1,0 +1,40 @@
+{
+  "name": "retrouvemoi",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host --port 5173",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives",
+    "lint:fix": "eslint . --ext js,jsx --fix",
+    "lint:unicode": "eslint . --ext js,jsx --format ./eslint.unicode-escapes-formatter.mjs --no-error-on-unmatched-pattern",
+    "fix:unicode": "node scripts/fix-unicode-escapes.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "framer-motion": "^11.15.0",
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-helmet": "^6.1.0",
+    "react-router-dom": "^7.18.2",
+    "sonner": "^2.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "globals": "^15.14.0",
+    "postcss": "^8.5.23",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "vite": "^7.3.6"
+  }
+}
