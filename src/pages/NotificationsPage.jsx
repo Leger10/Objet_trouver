@@ -215,7 +215,7 @@ const NotificationsPage = () => {
                         <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
                           {n.body}
                         </p>
-                        <p className="mt-1 text-[10px] text-muted-foreground/60">
+                        <p className="mt-1 text-[10px] text-muted-foreground/70">
                           {timeSince(n.created)}
                         </p>
                       </div>

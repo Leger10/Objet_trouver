@@ -13,7 +13,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb, supabase } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -244,17 +244,13 @@ const RewardsPage = () => {
       const commission = computeCommission(pts);
       const withdrawMode = getWithdrawMode(method);
 
-      // Debit points immediately
-      const debitAmount = -pts;
-      await pb.collection("points_ledger").create({
-        user: user.id,
-        amount: debitAmount,
-        reason: "withdrawal",
-        description: `Retrait de ${pts} pts via ${method}`,
+      // Debit points via RPC (safe, atomic)
+      const { error: debitErr } = await supabase.rpc('debit_points_safe', {
+        p_user: user.id,
+        p_amount: pts,
+        p_reason: 'withdrawal',
       });
-      await pb.collection("users").update(user.id, {
-        "points-": pts,
-      });
+      if (debitErr) throw new Error(debitErr.message || "Erreur lors du débit des points");
 
       // Create pending withdrawal record
       const rec = await createWithdrawalRecord({

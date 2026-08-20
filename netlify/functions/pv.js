@@ -1,78 +1,70 @@
-// netlify/functions/pv.js
-import { supabase } from '../../src/lib/supabaseClient.js';
-import { generatePVNumber, maskIdNumber, formatDateTimeFr } from '../../src/lib/pv.js';
+// netlify/functions/pv.js — Server-side PV creation using Supabase
+import { createClient } from "@supabase/supabase-js";
 
-export const handler = async (event, context) => {
-  // CORS Headers
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+function generatePVNumber(type) {
+  const prefix = type === "deposit" ? "PV-DEP" : "PV-RET";
+  const date = new Date();
+  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+  return `${prefix}-${ymd}-${rand}`;
+}
+
+function maskIdNumber(id) {
+  if (!id || id.length < 4) return id || "";
+  return "*".repeat(id.length - 4) + id.slice(-4);
+}
+
+export const handler = async (event) => {
   const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Content-Type': 'application/json',
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Content-Type": "application/json",
   };
 
-  // Gestion des requêtes OPTIONS (CORS)
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-    };
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers, body: "" };
   }
 
-  // Méthode non autorisée
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+  if (event.httpMethod !== "POST") {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: "Method Not Allowed" }) };
   }
 
   try {
-    // Vérification de l'authentification
     const authHeader = event.headers.authorization;
     if (!authHeader) {
-      return {
-        statusCode: 401,
-        headers,
-        body: JSON.stringify({ error: 'Non authentifié' }),
-      };
+      return { statusCode: 401, headers, body: JSON.stringify({ error: "Non authentifié" }) };
     }
 
-    // Récupération des données
     const data = JSON.parse(event.body);
     const { type, form, generatedBy } = data;
 
     if (!type || !form || !generatedBy) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ error: 'Données manquantes' }),
-      };
+      return { statusCode: 400, headers, body: JSON.stringify({ error: "Données manquantes" }) };
     }
 
-    // Génération du numéro de PV
     const pvNumber = generatePVNumber(type);
 
-    // Construction du payload
     const payload = {
       pv_number: pvNumber,
       type: type,
       generated_by: generatedBy,
-      signatory_name: form.signatoryName || '',
-      signatory_phone: form.signatoryPhone || '',
-      signatory_id_type: form.signatoryIdType || '',
+      signatory_name: form.signatoryName || "",
+      signatory_phone: form.signatoryPhone || "",
+      signatory_id_type: form.signatoryIdType || "",
       signatory_id_number: maskIdNumber(form.signatoryIdNumber),
-      object_category: form.objectCategory || '',
-      object_description: form.objectDescription || '',
-      location: form.location || 'Locaux RetrouveMoi',
+      object_category: form.objectCategory || "",
+      object_description: form.objectDescription || "",
+      location: form.location || "Locaux RetrouveMoi",
       data: form,
-      created_at: new Date().toISOString(),
     };
 
-    // Sauvegarde dans Supabase
     const { data: pvData, error: pvError } = await supabase
-      .from('pvs')
+      .from("pvs")
       .insert(payload)
       .select()
       .single();
@@ -86,19 +78,15 @@ export const handler = async (event, context) => {
         success: true,
         data: pvData,
         pvNumber: pvNumber,
-        message: 'Procès-verbal généré avec succès',
+        message: "Procès-verbal généré avec succès",
       }),
     };
-
   } catch (error) {
-    console.error('❌ Erreur PV:', error);
+    console.error("[pv] Error:", error.message);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({
-        success: false,
-        error: error.message || 'Erreur interne',
-      }),
+      body: JSON.stringify({ success: false, error: error.message || "Erreur interne" }),
     };
   }
 };

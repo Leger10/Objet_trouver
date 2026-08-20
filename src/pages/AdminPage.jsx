@@ -41,6 +41,7 @@ import {
   Receipt,
   Building2,
   Activity,
+  Smartphone,
 } from "lucide-react";
 
 const ALL_TABS = [
@@ -58,6 +59,7 @@ const ALL_TABS = [
   { key: "commissions", label: "Commissions", icon: BarChart3, mainAdminOnly: true },
   { key: "pub", label: "Pub", icon: Megaphone },
   { key: "pv", label: "PV", icon: FileText },
+  { key: "installations", label: "Installs", icon: Smartphone, mainAdminOnly: true },
 ];
 
 const AdminPage = () => {
@@ -99,6 +101,7 @@ const AdminPage = () => {
   const [proAccounts, setProAccounts] = useState([]);
   const [adEvents, setAdEvents] = useState([]);
   const [pvs, setPvs] = useState([]);
+  const [installations, setInstallations] = useState([]);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [loading, setLoading] = useState(true);
@@ -131,7 +134,7 @@ const AdminPage = () => {
         }
       };
 
-      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList] =
+      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList, installs] =
         await Promise.all([
           safeGetList("declarations", 1, 1, { filter: 'kind = "lost"', requestKey: "a1" }),
           safeGetList("declarations", 1, 1, { filter: 'kind = "found"', requestKey: "a2" }),
@@ -148,6 +151,7 @@ const AdminPage = () => {
           safeGetFull("pro_accounts", { sort: "-created", expand: "owner", requestKey: "a13" }),
           safeGetFull("ad_events", { sort: "-created", requestKey: "a14" }),
           safeGetFull("pvs", { sort: "-created", expand: "generated_by,related_declaration", requestKey: "a15" }),
+          safeGetFull("app_installations", { sort: "-installed_at", expand: "user", requestKey: "a16" }),
         ]);
 
       let allUsers = [];
@@ -203,6 +207,7 @@ const AdminPage = () => {
       setProAccounts(pros || []);
       setAdEvents(ads || []);
       setPvs(pvList || []);
+      setInstallations(installs || []);
     } catch (e) {
       console.error("AdminPage load error:", e);
       setDeclarations([]);
@@ -262,11 +267,18 @@ const AdminPage = () => {
 
   // ── Finance computations ────────────────────────────────────────────────
   const confirmedPayments = payments.filter((p) => p.status === "confirmed");
+  const pendingPayments = payments.filter((p) => p.status === "pending");
+  const failedPayments = payments.filter((p) => p.status === "failed");
+
+  const totalDepositsFcfa = confirmedPayments.reduce((s, p) => s + (p.amount_fcfa || 0), 0);
+  const totalFeesCollected = confirmedPayments.reduce((s, p) => s + (p.fee_fcfa || 0), 0);
+
   const revenueBySource = useMemo(() => ({
     subscription: confirmedPayments.filter((p) => p.type === "subscription").reduce((s, p) => s + (p.amount_fcfa || 0), 0),
     service: confirmedPayments.filter((p) => p.type === "service").reduce((s, p) => s + (p.amount_fcfa || 0), 0),
     pro_account: confirmedPayments.filter((p) => p.type === "pro_account").reduce((s, p) => s + (p.amount_fcfa || 0), 0),
     donation: stats.donationTotal,
+    priority: confirmedPayments.filter((p) => p.type === "priority").reduce((s, p) => s + (p.amount_fcfa || 0), 0),
     commission: withdrawals.filter((w) => w.status === "paid").reduce((s, w) => s + (w.commission_fcfa || 0), 0),
   }), [confirmedPayments, stats.donationTotal, withdrawals]);
   const totalRevenue = Object.values(revenueBySource).reduce((s, n) => s + n, 0);
@@ -289,13 +301,34 @@ const AdminPage = () => {
   const proRevenue = revenueBySource.pro_account;
 
   const paidWithdrawals = withdrawals.filter((w) => w.status === "paid");
+  const rejectedWithdrawals = withdrawals.filter((w) => w.status === "rejected");
   const totalCommission = paidWithdrawals.reduce((s, w) => s + (w.commission_fcfa || 0), 0);
-  const avgWithdrawal = paidWithdrawals.length > 0 ? Math.round(paidWithdrawals.reduce((s, w) => s + (w.amount_fcfa || 0), 0) / paidWithdrawals.length) : 0;
+  const totalWithdrawn = paidWithdrawals.reduce((s, w) => s + (w.amount_fcfa || 0), 0);
+  const avgWithdrawal = paidWithdrawals.length > 0 ? Math.round(totalWithdrawn / paidWithdrawals.length) : 0;
+  const totalPointsWithdrawn = paidWithdrawals.reduce((s, w) => s + (w.amount_points || 0), 0);
+
+  // Payment type breakdown
+  const paymentsByType = {};
+  confirmedPayments.forEach((p) => {
+    const t = p.type || "other";
+    if (!paymentsByType[t]) paymentsByType[t] = { count: 0, total: 0 };
+    paymentsByType[t].count += 1;
+    paymentsByType[t].total += p.amount_fcfa || 0;
+  });
+
+  // Withdrawal method breakdown
+  const withdrawalsByMethod = {};
+  withdrawals.forEach((w) => {
+    const m = w.payment_method || w.method || "inconnu";
+    if (!withdrawalsByMethod[m]) withdrawalsByMethod[m] = { count: 0, total: 0, paid: 0 };
+    withdrawalsByMethod[m].count += 1;
+    withdrawalsByMethod[m].total += w.amount_fcfa || 0;
+    if (w.status === "paid") withdrawalsByMethod[m].paid += w.amount_fcfa || 0;
+  });
 
   const impressions = adEvents.filter((a) => a.type === "impression").length;
   const clicks = adEvents.filter((a) => a.type === "click").length;
   const ctr = impressions > 0 ? ((clicks / impressions) * 100).toFixed(2) : "0.00";
-  const pendingPayments = payments.filter((p) => p.status === "pending");
 
   const pendingWithdrawals = withdrawals.filter((w) => w.status === "pending");
   const pendingTotal = pendingWithdrawals.reduce((s, w) => s + (w.amount_fcfa || 0), 0);
@@ -456,16 +489,17 @@ const AdminPage = () => {
             {tab === "signalements" && <TabSignalements reports={reports} setReportStatus={setReportStatus} />}
             {tab === "declarations" && <TabDeclarations declarations={declarations} setStatus={setStatus} />}
             {tab === "donations" && <TabDonations donations={donations} stats={stats} methodStats={methodStats} phoneStats={phoneStats} />}
-            {tab === "finances" && <TabFinances revenueBySource={revenueBySource} totalRevenue={totalRevenue} />}
-            {tab === "retraits" && <TabRetraits withdrawals={withdrawals} pendingWithdrawals={pendingWithdrawals} pendingTotal={pendingTotal} paidTotal={paidTotal} setWithdrawalStatus={setWithdrawalStatus} setRejectTarget={setRejectTarget} setRejectReason={setRejectReason} />}
+            {tab === "finances" && <TabFinances revenueBySource={revenueBySource} totalRevenue={totalRevenue} totalDepositsFcfa={totalDepositsFcfa} totalFeesCollected={totalFeesCollected} payments={payments} confirmedPayments={confirmedPayments} pendingPayments={pendingPayments} failedPayments={failedPayments} paymentsByType={paymentsByType} />}
+            {tab === "retraits" && <TabRetraits withdrawals={withdrawals} pendingWithdrawals={pendingWithdrawals} pendingTotal={pendingTotal} paidTotal={paidTotal} totalCommission={totalCommission} totalPointsWithdrawn={totalPointsWithdrawn} withdrawalsByMethod={withdrawalsByMethod} paidWithdrawals={paidWithdrawals} rejectedWithdrawals={rejectedWithdrawals} setWithdrawalStatus={setWithdrawalStatus} setRejectTarget={setRejectTarget} setRejectReason={setRejectReason} />}
             {tab === "points" && <TabPoints purchases={purchases} totalPointsSpent={totalPointsSpent} topServices={topServices} SERVICE_LABELS={SERVICE_LABELS} />}
-            {tab === "paiements" && <TabPaiements pendingPayments={pendingPayments} setPaymentStatus={setPaymentStatus} />}
+            {tab === "paiements" && <TabPaiements payments={payments} pendingPayments={pendingPayments} confirmedPayments={confirmedPayments} failedPayments={failedPayments} totalDepositsFcfa={totalDepositsFcfa} setPaymentStatus={setPaymentStatus} />}
             {tab === "abonnements" && <TabAbonnements premiumCount={premiumCount} proCount={proCount} subRevenue={subRevenue} churnRate={churnRate} />}
             {tab === "services" && <TabServices serviceRevenueMap={serviceRevenueMap} />}
             {tab === "pro" && <TabPro proAccounts={proAccounts} activeProAccounts={activeProAccounts} proRevenue={proRevenue} setProAccountStatus={setProAccountStatus} />}
-            {tab === "commissions" && <TabCommissions totalCommission={totalCommission} paidWithdrawals={paidWithdrawals} avgWithdrawal={avgWithdrawal} />}
+            {tab === "commissions" && <TabCommissions totalCommission={totalCommission} paidWithdrawals={paidWithdrawals} avgWithdrawal={avgWithdrawal} totalWithdrawn={totalWithdrawn} totalPointsWithdrawn={totalPointsWithdrawn} />}
             {tab === "pub" && <TabPub impressions={impressions} clicks={clicks} ctr={ctr} />}
             {tab === "pv" && <TabPV pvs={pvs} />}
+            {tab === "installations" && <TabInstallations installations={installations} />}
           </div>
         )}
       </div>
@@ -690,37 +724,88 @@ function TabDonations({ donations, stats, methodStats, phoneStats }) {
   );
 }
 
-function TabFinances({ revenueBySource, totalRevenue }) {
+function TabFinances({ revenueBySource, totalRevenue, totalDepositsFcfa, totalFeesCollected, payments, confirmedPayments, pendingPayments, failedPayments, paymentsByType }) {
+  const TYPE_LABELS = { subscription: "Abonnements", service: "Services", pro_account: "Comptes Pro", donation: "Dons", priority: "Priorités", other: "Autres" };
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl bg-gradient-to-br from-primary to-primary/80 p-4 text-primary-foreground">
+      <div className="rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-accent p-4 text-primary-foreground">
         <p className="text-3xl font-extrabold">{totalRevenue.toLocaleString("fr-FR")} FCFA</p>
-        <p className="text-xs opacity-80">Revenus totaux</p>
+        <p className="text-xs opacity-80">Revenus totaux confirmés</p>
       </div>
-      <div className="space-y-2">
-        {[
-          ["Abonnements", revenueBySource.subscription, TrendingUp],
-          ["Services", revenueBySource.service, CreditCard],
-          ["Comptes pro", revenueBySource.pro_account, Building2],
-          ["Dons", revenueBySource.donation, Coins],
-          ["Commissions", revenueBySource.commission, BarChart3],
-        ].map(([label, val, Icon]) => (
-          <div key={label} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
-            <Icon className="h-4 w-4 text-primary flex-shrink-0" />
-            <span className="flex-1 text-sm font-semibold">{label}</span>
-            <span className="text-sm font-extrabold text-accent">{val.toLocaleString("fr-FR")} FCFA</span>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-primary">{totalDepositsFcfa.toLocaleString("fr-FR")}</p>
+          <p className="text-[9px] text-muted-foreground">Dépôts (FCFA)</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-accent">{totalFeesCollected.toLocaleString("fr-FR")}</p>
+          <p className="text-[9px] text-muted-foreground">Frais 3% (FCFA)</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold">{payments.length}</p>
+          <p className="text-[9px] text-muted-foreground">Transactions</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-accent">{confirmedPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">Confirmés</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-primary">{pendingPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">En attente</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-destructive">{failedPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">Échoués</p>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-extrabold mb-2">Revenus par source</p>
+        <div className="space-y-2">
+          {[
+            ["Abonnements", revenueBySource.subscription, TrendingUp],
+            ["Services", revenueBySource.service, CreditCard],
+            ["Comptes Pro", revenueBySource.pro_account, Building2],
+            ["Dons", revenueBySource.donation, Coins],
+            ["Priorités", revenueBySource.priority || 0, AlertTriangle],
+            ["Commissions retraits", revenueBySource.commission, BarChart3],
+          ].map(([label, val, Icon]) => (
+            <div key={label} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
+              <Icon className="h-4 w-4 text-primary flex-shrink-0" />
+              <span className="flex-1 text-sm font-semibold">{label}</span>
+              <span className="text-sm font-extrabold text-accent">{val.toLocaleString("fr-FR")} FCFA</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {Object.keys(paymentsByType).length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold mb-2">Transactions par type</p>
+          <div className="space-y-1.5">
+            {Object.entries(paymentsByType).map(([type, data]) => (
+              <div key={type} className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs">
+                <span className="flex-1 font-semibold">{TYPE_LABELS[type] || type}</span>
+                <span className="text-muted-foreground">{data.count}x</span>
+                <span className="font-extrabold text-primary">{data.total.toLocaleString("fr-FR")} FCFA</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function TabRetraits({ withdrawals, pendingWithdrawals, pendingTotal, paidTotal, setWithdrawalStatus, setRejectTarget, setRejectReason }) {
+function TabRetraits({ withdrawals, pendingWithdrawals, pendingTotal, paidTotal, totalCommission, totalPointsWithdrawn, withdrawalsByMethod, paidWithdrawals, rejectedWithdrawals, setWithdrawalStatus, setRejectTarget, setRejectReason }) {
   const p = usePaginate(withdrawals);
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-accent p-4 text-primary-foreground">
+        <p className="text-2xl font-extrabold">{paidTotal.toLocaleString("fr-FR")} FCFA</p>
+        <p className="text-xs opacity-80">Total retiré par les utilisateurs</p>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
         <div className="rounded-2xl border border-border bg-card p-2 text-center">
           <p className="text-lg font-extrabold text-primary">{pendingTotal.toLocaleString("fr-FR")}</p>
           <p className="text-[9px] text-muted-foreground">En attente</p>
@@ -730,14 +815,44 @@ function TabRetraits({ withdrawals, pendingWithdrawals, pendingTotal, paidTotal,
           <p className="text-[9px] text-muted-foreground">À traiter</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-2 text-center">
-          <p className="text-lg font-extrabold text-accent">{paidTotal.toLocaleString("fr-FR")}</p>
-          <p className="text-[9px] text-muted-foreground">Payé</p>
+          <p className="text-lg font-extrabold text-accent">{paidWithdrawals.length}</p>
+          <p className="text-[9px] text-muted-foreground">Payés</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-destructive">{rejectedWithdrawals.length}</p>
+          <p className="text-[9px] text-muted-foreground">Refusés</p>
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-accent">{totalCommission.toLocaleString("fr-FR")} FCFA</p>
+          <p className="text-[9px] text-muted-foreground">Commissions 5%</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-primary">{totalPointsWithdrawn.toLocaleString("fr-FR")} pts</p>
+          <p className="text-[9px] text-muted-foreground">Points retirés</p>
+        </div>
+      </div>
+      {Object.keys(withdrawalsByMethod).length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold mb-2">Par méthode</p>
+          <div className="space-y-1.5">
+            {Object.entries(withdrawalsByMethod).map(([method, data]) => (
+              <div key={method} className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs">
+                <span className="flex-1 font-semibold">{method}</span>
+                <span className="text-muted-foreground">{data.count}x</span>
+                <span className="text-muted-foreground">{data.paid.toLocaleString("fr-FR")} payés</span>
+                <span className="font-extrabold text-primary">{data.total.toLocaleString("fr-FR")} FCFA</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {withdrawals.length === 0 ? (
         <EmptyState text="Aucun retrait." />
       ) : (
         <div className="space-y-2">
+          <p className="text-xs font-extrabold">Historique</p>
           {p.shown.map((w) => (
             <div key={w.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
               <div className="flex items-center gap-2">
@@ -746,6 +861,18 @@ function TabRetraits({ withdrawals, pendingWithdrawals, pendingTotal, paidTotal,
                 <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                   w.status === "paid" ? "bg-accent/15 text-accent" : w.status === "rejected" ? "bg-destructive/15 text-destructive" : w.status === "approved" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                 }`}>{w.status}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>{w.payment_method || w.method || "—"}</span>
+                <span>·</span>
+                <span>{w.phone || w.payment_details || "—"}</span>
+                <span>·</span>
+                <span>{w.amount_points || 0} pts</span>
+                <span>·</span>
+                <span>{w.commission_fcfa || 0} FCFA frais</span>
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                {new Date(w.created_at || w.created).toLocaleDateString("fr-FR")} {new Date(w.created_at || w.created).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
               </div>
               {w.status === "pending" && (
                 <div className="mt-2 flex gap-1.5">
@@ -815,28 +942,79 @@ function TabPoints({ purchases, totalPointsSpent, topServices, SERVICE_LABELS })
   );
 }
 
-function TabPaiements({ pendingPayments, setPaymentStatus }) {
-  const p = usePaginate(pendingPayments);
-  return pendingPayments.length === 0 ? (
-    <EmptyState text="Aucun paiement en attente." />
-  ) : (
-    <div className="space-y-2">
-      {p.shown.map((pay) => (
-        <div key={pay.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate font-semibold">
-              {pay.expand?.user?.name || pay.expand?.user?.email || "User"} — {pay.item_label}
-            </span>
-            <span className="font-extrabold text-primary">{(pay.amount_fcfa || 0).toLocaleString("fr-FR")} FCFA</span>
-          </div>
-          {pay.description && <p className="mt-1 text-[10px] text-muted-foreground">{pay.description}</p>}
-          <div className="mt-2 flex gap-1.5">
-            <button onClick={() => setPaymentStatus(pay, "confirmed")} className="rounded-lg bg-accent px-3 py-1.5 text-[10px] font-bold text-accent-foreground">Confirmer</button>
-            <button onClick={() => setPaymentStatus(pay, "failed")} className="rounded-lg bg-destructive px-3 py-1.5 text-[10px] font-bold text-destructive-foreground">Échec</button>
-          </div>
+function TabPaiements({ payments, pendingPayments, confirmedPayments, failedPayments, totalDepositsFcfa, setPaymentStatus }) {
+  const [filter, setFilter] = useState("all");
+  const filtered = filter === "all" ? payments : payments.filter((p) => p.status === filter);
+  const p = usePaginate(filtered);
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-accent p-4 text-primary-foreground">
+        <p className="text-2xl font-extrabold">{totalDepositsFcfa.toLocaleString("fr-FR")} FCFA</p>
+        <p className="text-xs opacity-80">Total dépôts confirmés ({confirmedPayments.length} transactions)</p>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-accent">{confirmedPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">Confirmés</p>
         </div>
-      ))}
-      <ListFooter {...p} total={pendingPayments.length} />
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-primary">{pendingPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">En attente</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-destructive">{failedPayments.length}</p>
+          <p className="text-[9px] text-muted-foreground">Échoués</p>
+        </div>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+        {[
+          { key: "all", label: "Tous" },
+          { key: "confirmed", label: "Confirmés" },
+          { key: "pending", label: "En attente" },
+          { key: "failed", label: "Échoués" },
+        ].map((f) => (
+          <button key={f.key} onClick={() => setFilter(f.key)} className={`whitespace-nowrap rounded-xl px-3 py-1.5 text-[11px] font-bold ${filter === f.key ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground"}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      {filtered.length === 0 ? (
+        <EmptyState text="Aucun paiement." />
+      ) : (
+        <div className="space-y-2">
+          {p.shown.map((pay) => (
+            <div key={pay.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  {pay.expand?.user?.name || pay.expand?.user?.email || "User"}
+                </span>
+                <span className="font-extrabold text-primary">{(pay.amount_fcfa || 0).toLocaleString("fr-FR")} FCFA</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                  pay.status === "confirmed" ? "bg-accent/15 text-accent" : pay.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"
+                }`}>{pay.status}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-bold text-primary">{pay.type || "—"}</span>
+                <span>{pay.item_label || pay.item_key || "—"}</span>
+                {pay.fee_fcfa > 0 && <span>· Frais: {pay.fee_fcfa} FCFA</span>}
+                {pay.moneyfusion_moyen && <span>· {pay.moneyfusion_moyen}</span>}
+              </div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                {new Date(pay.created_at || pay.created).toLocaleDateString("fr-FR")} {new Date(pay.created_at || pay.created).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                {pay.confirmed_at && <> · Confirmé le {new Date(pay.confirmed_at).toLocaleDateString("fr-FR")}</>}
+              </div>
+              {pay.moneyfusion_token && <p className="mt-1 text-[9px] text-muted-foreground truncate">Token: {pay.moneyfusion_token}</p>}
+              {pay.status === "pending" && (
+                <div className="mt-2 flex gap-1.5">
+                  <button onClick={() => setPaymentStatus(pay, "confirmed")} className="rounded-lg bg-accent px-3 py-1.5 text-[10px] font-bold text-accent-foreground">Confirmer</button>
+                  <button onClick={() => setPaymentStatus(pay, "failed")} className="rounded-lg bg-destructive px-3 py-1.5 text-[10px] font-bold text-destructive-foreground">Échec</button>
+                </div>
+              )}
+            </div>
+          ))}
+          <ListFooter {...p} total={filtered.length} />
+        </div>
+      )}
     </div>
   );
 }
@@ -929,21 +1107,35 @@ function TabPro({ proAccounts, activeProAccounts, proRevenue, setProAccountStatu
   );
 }
 
-function TabCommissions({ totalCommission, paidWithdrawals, avgWithdrawal }) {
+function TabCommissions({ totalCommission, paidWithdrawals, avgWithdrawal, totalWithdrawn, totalPointsWithdrawn }) {
   return (
     <div className="space-y-3">
+      <div className="rounded-2xl bg-gradient-to-br from-accent to-accent/80 p-4 text-accent-foreground">
+        <p className="text-2xl font-extrabold">{totalCommission.toLocaleString("fr-FR")} FCFA</p>
+        <p className="text-xs opacity-80">Commissions totales collectées (5% sur retraits)</p>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-2xl border border-border bg-card p-3 text-center">
-          <p className="text-lg font-extrabold text-primary">{totalCommission.toLocaleString("fr-FR")}</p>
-          <p className="text-[9px] text-muted-foreground">Collectées (FCFA)</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3 text-center">
-          <p className="text-lg font-extrabold">{paidWithdrawals.length}</p>
+          <p className="text-lg font-extrabold text-primary">{paidWithdrawals.length}</p>
           <p className="text-[9px] text-muted-foreground">Retraits payés</p>
         </div>
         <div className="rounded-2xl border border-border bg-card p-3 text-center">
-          <p className="text-lg font-extrabold text-accent">{avgWithdrawal.toLocaleString("fr-FR")}</p>
+          <p className="text-lg font-extrabold text-accent">{totalWithdrawn.toLocaleString("fr-FR")}</p>
+          <p className="text-[9px] text-muted-foreground">Total versé (FCFA)</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-3 text-center">
+          <p className="text-lg font-extrabold">{avgWithdrawal.toLocaleString("fr-FR")}</p>
           <p className="text-[9px] text-muted-foreground">Moyen (FCFA)</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-primary">{totalPointsWithdrawn.toLocaleString("fr-FR")}</p>
+          <p className="text-[9px] text-muted-foreground">Points retirés</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-sm font-extrabold text-accent">{paidWithdrawals.length > 0 ? Math.round(totalCommission / paidWithdrawals.length) : 0} FCFA</p>
+          <p className="text-[9px] text-muted-foreground">Commission moy./retrait</p>
         </div>
       </div>
     </div>
@@ -1024,6 +1216,78 @@ function TabPV({ pvs }) {
           <ListFooter {...p} total={pvs.length} />
         </div>
       )}
+    </div>
+  );
+}
+
+function TabInstallations({ installations }) {
+  const p = usePaginate(installations);
+  const platformCounts = {};
+  installations.forEach((i) => {
+    const plat = i.platform || "inconnu";
+    platformCounts[plat] = (platformCounts[plat] || 0) + 1;
+  });
+  const uniqueUsers = new Set(installations.filter((i) => i.user).map((i) => i.user)).size;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-accent p-4 text-primary-foreground">
+        <p className="text-3xl font-extrabold">{installations.length}</p>
+        <p className="text-xs opacity-80">Installations totales de l&apos;app</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-primary">{uniqueUsers}</p>
+          <p className="text-[9px] text-muted-foreground">Utilisateurs uniques</p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-2 text-center">
+          <p className="text-lg font-extrabold text-accent">{installations.length}</p>
+          <p className="text-[9px] text-muted-foreground">Total installs</p>
+        </div>
+      </div>
+      {Object.keys(platformCounts).length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold mb-2">Par plateforme</p>
+          <div className="space-y-1.5">
+            {Object.entries(platformCounts).sort((a, b) => b[1] - a[1]).map(([plat, count]) => (
+              <div key={plat} className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs">
+                <Smartphone className="h-3.5 w-3.5 text-primary" />
+                <span className="flex-1 font-semibold">{plat}</span>
+                <span className="font-extrabold text-primary">{count}x</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div>
+        <p className="text-xs font-extrabold mb-2">Détail</p>
+        {installations.length === 0 ? (
+          <EmptyState text="Aucune installation." />
+        ) : (
+          <div className="space-y-2">
+            {p.shown.map((inst) => (
+              <div key={inst.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {inst.expand?.user?.name || inst.expand?.user?.email || "Anonyme"}
+                  </span>
+                  <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                    {inst.platform || "?"}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground truncate">
+                  {inst.user_agent || "—"}
+                </p>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                  {new Date(inst.installed_at || inst.created_at).toLocaleDateString("fr-FR")}{" "}
+                  {new Date(inst.installed_at || inst.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+            ))}
+            <ListFooter {...p} total={installations.length} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

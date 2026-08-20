@@ -82,28 +82,79 @@ h1, h2, h3, h4, h5, h6,
     --brand-teal: #0D9488;
   }
 
-  /* Mode sombre premium */
+  /* Mode sombre premium — texte blanc éclatant, très lisible */
   .dark {
-    --background: 205 40% 8%;
+    --background: 205 40% 7%;
     --foreground: 0 0% 98%;
-    --card: 205 38% 11%;
+    --card: 205 30% 13%;
     --card-foreground: 0 0% 98%;
-    --popover: 205 38% 11%;
+    --popover: 205 30% 13%;
     --popover-foreground: 0 0% 98%;
-    --primary: 199 90% 55%;
-    --primary-foreground: 205 40% 8%;
-    --secondary: 165 30% 18%;
-    --secondary-foreground: 160 60% 90%;
-    --muted: 205 25% 16%;
-    --muted-foreground: 205 15% 72%;
+    --primary: 199 90% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 165 30% 16%;
+    --secondary-foreground: 160 60% 92%;
+    --muted: 205 22% 15%;
+    --muted-foreground: 205 10% 78%;
     --accent: 162 62% 45%;
-    --accent-foreground: 205 40% 8%;
-    --destructive: 0 62% 40%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 205 25% 20%;
-    --input: 205 25% 20%;
-    --ring: 199 90% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 205 22% 20%;
+    --input: 205 22% 20%;
+    --ring: 199 90% 58%;
   }
+
+  /* Blindage : tout texte dans le body doit être blanc/clair en dark */
+  .dark body,
+  .dark html,
+  .dark [class*="text-foreground"],
+  .dark [class*="text-card"],
+  .dark [class*="text-popover"],
+  .dark [class*="text-secondary-"] {
+    color: hsl(0 0% 98%) !important;
+  }
+  .dark [class*="text-muted-foreground"] {
+    color: hsl(205 10% 78%) !important;
+  }
+  .dark [class*="text-muted-foreground/7"] {
+    color: hsl(205 10% 72%) !important;
+  }
+  .dark [class*="text-primary"] {
+    color: hsl(199 90% 58%) !important;
+  }
+  .dark [class*="text-accent"] {
+    color: hsl(162 62% 50%) !important;
+  }
+  .dark [class*="text-destructive"] {
+    color: hsl(0 70% 60%) !important;
+  }
+
+  /*
+   * Dark mode: boost semi-transparent primary backgrounds so they are visible
+   * on the dark page/card surfaces. bg-primary/5 → ~15%, bg-primary/10 → ~22%.
+   */
+  .dark .bg-primary\/5  { background-color: hsl(199 90% 55% / 0.15) !important; }
+  .dark .bg-primary\/8  { background-color: hsl(199 90% 55% / 0.18) !important; }
+  .dark .bg-primary\/10 { background-color: hsl(199 90% 55% / 0.22) !important; }
+  .dark .bg-primary\/12 { background-color: hsl(199 90% 55% / 0.22) !important; }
+  .dark .bg-primary\/15 { background-color: hsl(199 90% 55% / 0.25) !important; }
+  .dark .bg-accent\/10  { background-color: hsl(162 62% 42% / 0.22) !important; }
+  .dark .bg-accent\/15  { background-color: hsl(162 62% 42% / 0.25) !important; }
+  .dark .bg-destructive\/10 { background-color: hsl(0 62% 42% / 0.20) !important; }
+  .dark .bg-destructive\/15 { background-color: hsl(0 62% 42% / 0.22) !important; }
+  .dark .bg-secondary\/40 { background-color: hsl(165 30% 16% / 0.70) !important; }
+  .dark .bg-secondary\/50 { background-color: hsl(165 30% 16% / 0.80) !important; }
+  .dark .bg-secondary\/60 { background-color: hsl(165 30% 16% / 0.85) !important; }
+  .dark .bg-muted\/30 { background-color: hsl(205 22% 15% / 0.65) !important; }
+  .dark .bg-muted\/40 { background-color: hsl(205 22% 15% / 0.75) !important; }
+  .dark .bg-muted\/50 { background-color: hsl(205 22% 15% / 0.85) !important; }
+  .dark .bg-muted\/60 { background-color: hsl(205 22% 15% / 0.90) !important; }
+  .dark .hover\:bg-primary\/5:hover  { background-color: hsl(199 90% 55% / 0.15) !important; }
+  .dark .hover\:bg-primary\/8:hover  { background-color: hsl(199 90% 55% / 0.18) !important; }
+  .dark .hover\:bg-primary\/10:hover { background-color: hsl(199 90% 55% / 0.22) !important; }
+  .dark .hover\:bg-destructive\/5:hover  { background-color: hsl(0 62% 42% / 0.15) !important; }
+  .dark .hover\:bg-destructive\/10:hover { background-color: hsl(0 62% 42% / 0.20) !important; }
 }
 
 /* ============================================================
@@ -295,8 +346,8 @@ h1, h2, h3, h4, h5, h6,
   }
   
   .dark .glass {
-    background: hsl(205 40% 8% / 0.7);
-    border-color: hsl(0 0% 100% / 0.05);
+    background: hsl(205 40% 10% / 0.75);
+    border-color: hsl(0 0% 100% / 0.08);
   }
   
   /* Badges et tags premium */

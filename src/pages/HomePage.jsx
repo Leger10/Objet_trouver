@@ -15,9 +15,7 @@ import {
 } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
-import AdSlot from "@/components/AdSlot";
 import SponsorBanner from "@/components/SponsorBanner";
-import DeclarationCard from "@/components/DeclarationCard";
 import PullToRefresh from "@/components/PullToRefresh";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
@@ -29,6 +27,7 @@ import HeroRotator from "@/components/HeroRotator";
 import { useBranding } from "@/contexts/BrandingContext";
 import { DEFAULT_HERO } from "@/lib/brandingDefaults";
 import AutoScrollRow from "@/components/AutoScrollRow";
+import InstallPopup from "@/components/InstallPopup";
 
 const steps = [
   {
@@ -62,7 +61,6 @@ const card = "rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-sm";
 
 const HomePage = () => {
   const { branding } = useBranding();
-  const [latest, setLatest] = useState([]);
   const [stats, setStats] = useState({ lost: 0, found: 0, returned: 0 });
   const [categories, setCategories] = useState([]);
   const [catCounts, setCatCounts] = useState({});
@@ -71,12 +69,6 @@ const HomePage = () => {
   const load = useCallback(async () => {
     try {
       const results = await Promise.allSettled([
-        pb.collection("declarations").getList(1, 6, {
-          sort: "-priority,-created",
-          filter: 'status != "blocked"',
-          expand: "category",
-          requestKey: "home-list",
-        }),
         pb.collection("declarations").getList(1, 1, { filter: 'kind = "lost"', requestKey: "home-lost" }),
         pb.collection("declarations").getList(1, 1, { filter: 'kind = "found"', requestKey: "home-found" }),
         pb.collection("declarations").getList(1, 1, { filter: 'status = "returned"', requestKey: "home-ret" }),
@@ -86,18 +78,16 @@ const HomePage = () => {
 
       const get = (i, fallback) => results[i].status === "fulfilled" ? results[i].value : fallback;
 
-      const list = get(0, { items: [], totalItems: 0 });
-      setLatest(list.items || []);
       setStats({
-        lost: get(1, { totalItems: 0 }).totalItems || 0,
-        found: get(2, { totalItems: 0 }).totalItems || 0,
-        returned: get(3, { totalItems: 0 }).totalItems || 0,
+        lost: get(0, { totalItems: 0 }).totalItems || 0,
+        found: get(1, { totalItems: 0 }).totalItems || 0,
+        returned: get(2, { totalItems: 0 }).totalItems || 0,
       });
-      setCategories(get(4, []));
-      setCatCounts(get(5, {}));
+      setCategories(get(3, []));
+      setCatCounts(get(4, {}));
 
       // Fallback: generate categories from static meta if DB table is empty/missing
-      if (get(4, []).length === 0) {
+      if (get(3, []).length === 0) {
         const fallback = CATEGORY_GROUPS.flatMap((g) =>
           g.slugs.map((slug, pos) => ({
             id: slug,
@@ -109,7 +99,7 @@ const HomePage = () => {
         setCategories(fallback);
       }
     } catch (_) {
-      setLatest([]);
+      setStats({ lost: 0, found: 0, returned: 0 });
     } finally {
       setLoading(false);
     }
@@ -165,6 +155,9 @@ const HomePage = () => {
           )}
         </HeroRotator>
 
+        {/* ── PWA INSTALL POPUP ── */}
+        <InstallPopup />
+
         {/* ── HEADLINE + TAG ── */}
         <section className="px-4 pt-5 pb-1">
           <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={2}>
@@ -203,8 +196,8 @@ const HomePage = () => {
         >
           <div className="grid grid-cols-3 gap-2.5">
             {[
-              { value: stats.lost, label: "Égarés", color: "text-red-500" },
-              { value: stats.found, label: "Retrouvés", color: "text-green-600" },
+              { value: stats.lost, label: "Égarés", color: "text-red-500 dark:text-red-400" },
+              { value: stats.found, label: "Retrouvés", color: "text-green-600 dark:text-green-400" },
               { value: stats.returned, label: "Rendus", color: "text-primary" },
             ].map((s) => (
               <div key={s.label} className={card + " flex flex-col items-center text-center !p-3 sm:!p-4"}>
@@ -322,36 +315,7 @@ const HomePage = () => {
           </Reveal>
         </section>
 
-        {/* ── DERNIÈRES DÉCLARATIONS ── */}
-        <section className="px-4 pt-4 pb-1">
-          <div className={card + " !p-0 overflow-hidden"}>
-            <div className="flex items-center justify-between px-4 pt-4 pb-1">
-              <h2 className="text-base font-extrabold">Dernières déclarations</h2>
-              <Link to="/rechercher" className="text-xs font-bold text-primary">Voir tout</Link>
-            </div>
-            <div className="px-4 pb-4 pt-2 grid gap-2.5">
-              {loading && [0, 1, 2].map((k) => (
-                <div key={k} className="h-24 animate-pulse rounded-xl bg-muted" />
-              ))}
-              {!loading && latest.length === 0 && (
-                <div className="rounded-xl border border-dashed border-border p-5 text-center text-muted-foreground text-xs">
-                  Aucune déclaration. Soyez le premier :{" "}
-                  <Link to="/declarer/perdu" className="font-bold text-primary">déclarer</Link>.
-                </div>
-              )}
-              {latest.map((item) => (
-                <DeclarationCard key={item.id} item={item} />
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── SPONSOR ANIMÉ #2 ── */}
-        <div className="px-4 pt-3">
-          <SponsorBanner />
-        </div>
-
-        {/* ── ABONNEMENTS & COMPTES PRO ── */}
+        {/* ── PREMIUM & PRO ── */}
         <section className="px-4 pt-4 pb-1">
           <div className="grid gap-2.5 sm:grid-cols-2">
             <Link

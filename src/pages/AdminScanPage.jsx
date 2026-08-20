@@ -581,7 +581,7 @@ const AdminScanPage = () => {
             {signatureData ? (
               <div className="space-y-2">
                 <img src={signatureData} alt="Signature" className="h-20 rounded-xl border border-border" />
-                <p className="text-xs text-green-600 font-bold flex items-center gap-1">
+                <p className="text-xs text-green-600 dark:text-green-400 font-bold flex items-center gap-1">
                   <CheckCircle className="h-3.5 w-3.5" /> Signature enregistrée
                 </p>
                 <button
@@ -670,7 +670,7 @@ const AdminScanPage = () => {
 
           <div
             ref={scannerContainerRef}
-            className="relative overflow-hidden rounded-xl border border-border bg-black/5"
+            className="relative overflow-hidden rounded-xl border border-border bg-muted/30"
           >
             <div id="qr-scanner-area" className="w-full min-h-[260px]" />
             {scannerActive && (

@@ -638,7 +638,7 @@ const DeclarePage = () => {
                     }`}
                   >
                     <span
-                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all ${
+                       className={`absolute top-0.5 h-6 w-6 rounded-full bg-background shadow transition-all ${
                         form.priority ? "left-[calc(100%-1.65rem)]" : "left-0.5"
                       }`}
                     />

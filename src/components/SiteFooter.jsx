@@ -39,13 +39,13 @@ const SiteFooter = () => {
                         <ul className="space-y-2.5 text-sm text-white/80">
                             {branding.address && (
                                 <li className="flex gap-2">
-                                    <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
+                                    <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
                                     <span>{branding.address}</span>
                                 </li>
                             )}
                             {branding.phone && (
                                 <li className="flex gap-2">
-                                    <Phone className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
+                                    <Phone className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
                                     <a href={`tel:${branding.phone.replace(/\s/g, '')}`} className="hover:text-white underline-offset-2 hover:underline">
                                         {branding.phone}
                                     </a>
@@ -53,7 +53,7 @@ const SiteFooter = () => {
                             )}
                             {branding.email && (
                                 <li className="flex gap-2">
-                                    <Mail className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
+                                    <Mail className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
                                     <a href={`mailto:${branding.email}`} className="hover:text-white underline-offset-2 hover:underline break-all">
                                         {branding.email}
                                     </a>
@@ -61,7 +61,7 @@ const SiteFooter = () => {
                             )}
                             {branding.hours && (
                                 <li className="flex gap-2">
-                                    <Clock className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
+                                    <Clock className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
                                     <span>{branding.hours}</span>
                                 </li>
                             )}

@@ -36,6 +36,7 @@ import { groupCategories, metaForSlug, groupStyle } from "@/lib/categories";
 import { printPV, TYPE_LABELS, TYPE_BADGE, formatDateTimeFr } from "@/lib/pv";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";
 import EtiquetteDecl from "@/components/EtiquetteDecl";
+import InstallPopup from "@/components/InstallPopup";
 
 const DECL_STATUS_LABELS = {
   restitue: { label: "Objet restitué", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", dot: "bg-emerald-500" },
@@ -440,6 +441,9 @@ const DashboardPage = () => {
             )}
           </motion.div>
 
+          {/* ── PWA INSTALL POPUP ── */}
+          <InstallPopup />
+
           {/* ── STATS GRID ── */}
           <div className="grid grid-cols-2 gap-3">
             <StatCard icon={ShieldCheck} value={declarations.length} label="Déclarations" gradient="bg-gradient-to-br from-blue-500 to-blue-600" color="text-white" />
@@ -660,13 +664,13 @@ const DashboardPage = () => {
               <div className="space-y-1">
                 {ledgerPaginate.shown.map((l) => (
                   <div key={l.id} className="flex items-center gap-2 rounded-2xl bg-background px-3 py-2 text-sm">
-                    <span className={`font-mono text-xs font-extrabold ${(l.amount || 0) > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    <span className={`font-mono text-xs font-extrabold ${(l.amount || 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
                       {(l.amount || 0) > 0 ? "+" : ""}{(l.amount || 0).toLocaleString()}
                     </span>
                     <span className="flex-1 truncate text-xs text-muted-foreground capitalize">
                       {l.reason?.replace(/_/g, " ")}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/60">
+                    <span className="text-[10px] text-muted-foreground/70">
                       {new Date(l.created).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
                     </span>
                   </div>

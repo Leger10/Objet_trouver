@@ -55,7 +55,7 @@ const EtiquetteDecl = ({ pv, compact = false }) => {
         {adminName && (
           <div className="flex items-center gap-2.5">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-500/10">
-              <UserCircle className="h-4.5 w-4.5 text-blue-600" />
+              <UserCircle className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase text-muted-foreground">Administrateur</p>
@@ -66,7 +66,7 @@ const EtiquetteDecl = ({ pv, compact = false }) => {
         {location && (
           <div className="flex items-center gap-2.5">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-500/10">
-              <MapPin className="h-4.5 w-4.5 text-blue-600" />
+              <MapPin className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase text-muted-foreground">Lieu de dépôt</p>
@@ -77,7 +77,7 @@ const EtiquetteDecl = ({ pv, compact = false }) => {
         {pvNumber && (
           <div className="flex items-center gap-2.5">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue-500/10">
-              <FileText className="h-4.5 w-4.5 text-blue-600" />
+              <FileText className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <p className="text-[10px] font-bold uppercase text-muted-foreground">Procès-verbal</p>

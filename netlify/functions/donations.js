@@ -1,8 +1,11 @@
-// netlify/functions/donations.js
-import { supabase } from "../../src/lib/supabaseClient.js";
+// netlify/functions/donations.js — Server-side donations using Supabase
+import { createClient } from "@supabase/supabase-js";
 
-export const handler = async (event, context) => {
-  // CORS Headers
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+export const handler = async (event) => {
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
@@ -10,18 +13,14 @@ export const handler = async (event, context) => {
     "Content-Type": "application/json",
   };
 
-  // Gestion des requêtes OPTIONS (CORS)
   if (event.httpMethod === "OPTIONS") {
-    return {
-      statusCode: 204,
-      headers,
-    };
+    return { statusCode: 204, headers, body: "" };
   }
 
-  // GET - Récupérer les totaux
+  // GET — totals
   if (event.httpMethod === "GET") {
     try {
-      const { data: totals, error } = await supabase
+      const { data, error } = await supabase
         .from("donation_totals")
         .select("*")
         .eq("label", "global")
@@ -32,55 +31,29 @@ export const handler = async (event, context) => {
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({
-          success: true,
-          data: totals || { total_fcfa: 0, donors: 0 },
-        }),
+        body: JSON.stringify({ success: true, data: data || { total_fcfa: 0, donors: 0 } }),
       };
     } catch (error) {
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: error.message,
-        }),
-      };
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: error.message }) };
     }
   }
 
-  // POST - Créer un don
+  // POST — create donation
   if (event.httpMethod === "POST") {
     try {
-      const {
-        donor_name,
-        donor_phone,
-        amount_fcfa,
-        payment_method,
-        message,
-        usr_id,
-      } = JSON.parse(event.body);
+      const { donor_name, donor_phone, amount_fcfa, payment_method, message, usr_id } = JSON.parse(event.body);
 
-      // Validation
       if (!donor_name || !amount_fcfa || amount_fcfa < 100) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({
-            success: false,
-            error: "Données invalides. Montant minimum 100 FCFA.",
-          }),
-        };
+        return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: "Données invalides. Montant minimum 100 FCFA." }) };
       }
 
-      // Création du don
       const { data: donation, error: donationError } = await supabase
         .from("donations")
         .insert({
           usr: usr_id || null,
           donor_name: donor_name.trim(),
           donor_phone: donor_phone || null,
-          amount_fcfa: amount_fcfa,
+          amount_fcfa,
           payment_method: payment_method || "other",
           message: message || null,
           status: "completed",
@@ -90,7 +63,7 @@ export const handler = async (event, context) => {
 
       if (donationError) throw donationError;
 
-      // Mise à jour des totaux
+      // Update totals
       const { data: currentTotals } = await supabase
         .from("donation_totals")
         .select("*")
@@ -118,30 +91,15 @@ export const handler = async (event, context) => {
         body: JSON.stringify({
           success: true,
           data: donation,
-          totals: {
-            total_fcfa: newTotal,
-            donors: newDonors,
-          },
+          totals: { total_fcfa: newTotal, donors: newDonors },
           message: "Don enregistré avec succès",
         }),
       };
     } catch (error) {
-      console.error("❌ Erreur donation:", error);
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          success: false,
-          error: error.message || "Erreur interne",
-        }),
-      };
+      console.error("[donations] Error:", error.message);
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: error.message || "Erreur interne" }) };
     }
   }
 
-  // Méthode non autorisée
-  return {
-    statusCode: 405,
-    headers,
-    body: JSON.stringify({ error: "Method Not Allowed" }),
-  };
+  return { statusCode: 405, headers, body: JSON.stringify({ error: "Method Not Allowed" }) };
 };

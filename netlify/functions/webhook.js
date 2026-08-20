@@ -1,22 +1,45 @@
 // Netlify Function: Webhook receiver for MoneyFusion payin events
-// Handles: payin.session.completed, payin.session.pending, payin.session.cancelled
+// Uses Supabase REST API (PostgREST) instead of PocketBase
 
-const POCKETBASE_URL = process.env.POCKETBASE_URL || "https://retrouveobjet.pockethost.io";
-const POCKETBASE_ADMIN_TOKEN = process.env.POCKETBASE_ADMIN_TOKEN || "";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://uudgiamuqutgljakelkb.supabase.co";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const headers = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
 };
 
-const pbRequest = async (method, path, body) => {
-  const res = await fetch(`${POCKETBASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(POCKETBASE_ADMIN_TOKEN ? { Authorization: `Bearer ${POCKETBASE_ADMIN_TOKEN}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
+const sbHeaders = () => ({
+  "Content-Type": "application/json",
+  apikey: SUPABASE_SERVICE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+  Prefer: "return=representation",
+});
+
+// GET rows: /rest/v1/table?column=eq.value&select=*
+const sbGet = async (table, filter) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}&select=*`, {
+    headers: sbHeaders(),
+  });
+  return res.json();
+};
+
+// PATCH row by id
+const sbPatch = async (table, id, body) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: "PATCH",
+    headers: sbHeaders(),
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
+
+// POST row
+const sbPost = async (table, body) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: sbHeaders(),
+    body: JSON.stringify(body),
   });
   return res.json();
 };
@@ -41,24 +64,24 @@ exports.handler = async (event) => {
     }
 
     // Find the payment by moneyfusion_token
-    const payments = await pbRequest("GET", `/api/collections/payments/records?filter=moneyfusion_token='${tokenPay}'&limit=1`);
+    const payments = await sbGet("payments", `moneyfusion_token=eq.${tokenPay}&limit=1`);
 
-    if (!payments.items || payments.items.length === 0) {
+    if (!payments || payments.length === 0) {
       console.log("[webhook] Payment not found for token:", tokenPay);
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, message: "Payment not found, ignoring" }) };
     }
 
-    const payment = payments.items[0];
+    const payment = payments[0];
 
-    // Deduplicate: if already confirmed/completed, skip
-    if (payment.status === "confirmed" || payment.status === "completed") {
+    // Deduplicate: if already confirmed, skip
+    if (payment.status === "confirmed") {
       console.log("[webhook] Already processed:", tokenPay);
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, message: "Already processed" }) };
     }
 
     if (eventType === "payin.session.completed") {
       // Update payment to confirmed
-      await pbRequest("PATCH", `/api/collections/payments/records/${payment.id}`, {
+      await sbPatch("payments", payment.id, {
         status: "confirmed",
         moneyfusion_moyen: moyen || "",
         moneyfusion_transaction: numeroTransaction || "",
@@ -71,14 +94,12 @@ exports.handler = async (event) => {
 
       console.log("[webhook] Payment confirmed:", payment.id);
     } else if (eventType === "payin.session.cancelled") {
-      await pbRequest("PATCH", `/api/collections/payments/records/${payment.id}`, {
+      await sbPatch("payments", payment.id, {
         status: "failed",
         description: `${payment.description || ""} — Annulé via MoneyFusion`,
       });
       console.log("[webhook] Payment cancelled:", payment.id);
-    }
-    // payin.session.pending — ignore, just log
-    else {
+    } else {
       console.log("[webhook] Pending event, no action:", eventType);
     }
 
@@ -89,32 +110,24 @@ exports.handler = async (event) => {
   }
 };
 
-// Activate the corresponding service after successful payment
 async function activateService(payment) {
-  const { type, item_key, user, item_label } = payment;
+  const { type, item_key, user: userId, item_label } = payment;
 
   try {
     if (type === "subscription") {
-      // Activate subscription
       const now = new Date();
       const renewsAt = new Date(now);
       renewsAt.setMonth(renewsAt.getMonth() + 1);
 
-      // Check for existing active subscription
-      const existing = await pbRequest(
-        "GET",
-        `/api/collections/subscriptions/records?filter=user='${user}' && plan='${item_key}' && status='active'&limit=1`
-      );
+      const existing = await sbGet("subscriptions", `user=eq.${userId}&plan=eq.${item_key}&status=eq.active&limit=1`);
 
-      if (existing.items && existing.items.length > 0) {
-        // Extend
-        await pbRequest("PATCH", `/api/collections/subscriptions/records/${existing.items[0].id}`, {
+      if (existing && existing.length > 0) {
+        await sbPatch("subscriptions", existing[0].id, {
           renews_at: renewsAt.toISOString(),
         });
       } else {
-        // Create new
-        await pbRequest("POST", "/api/collections/subscriptions/records", {
-          user,
+        await sbPost("subscriptions", {
+          user: userId,
           plan: item_key,
           status: "active",
           renews_at: renewsAt.toISOString(),
@@ -122,23 +135,16 @@ async function activateService(payment) {
         });
       }
 
-      // Update user plan
-      await pbRequest("PATCH", `/api/collections/users/records/${user}`, {
-        plan: item_key,
-      });
+      await sbPatch("users", userId, { plan: item_key });
 
     } else if (type === "service") {
-      // Activate point purchase
-      const svc = await pbRequest(
-        "GET",
-        `/api/collections/fcfa_services/records?filter=key='${item_key}'&limit=1`
-      );
-      const duration = svc.items?.[0]?.duration || 30;
+      const svc = await sbGet("fcfa_services", `key=eq.${item_key}&limit=1`);
+      const duration = svc?.[0]?.duration_days || 30;
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + duration);
 
-      await pbRequest("POST", "/api/collections/point_purchases/records", {
-        user,
+      await sbPost("point_purchases", {
+        user: userId,
         service: item_key,
         points_cost: 0,
         fcfa_cost: payment.amount_fcfa,
@@ -147,22 +153,15 @@ async function activateService(payment) {
       });
 
     } else if (type === "pro_account") {
-      // Activate pro account
-      const pros = await pbRequest(
-        "GET",
-        `/api/collections/pro_accounts/records?filter=owner='${user}'&limit=1&sort=-created`
-      );
-      if (pros.items && pros.items.length > 0) {
-        await pbRequest("PATCH", `/api/collections/pro_accounts/records/${pros.items[0].id}`, {
-          status: "active",
-        });
+      const pros = await sbGet("pro_accounts", `owner=eq.${userId}&limit=1&order=created_at.desc`);
+      if (pros && pros.length > 0) {
+        await sbPatch("pro_accounts", pros[0].id, { status: "active" });
       }
 
     } else if (type === "donation") {
-      // Record donation
       const personalInfo = payment.moneyfusion_personal_info || {};
-      await pbRequest("POST", "/api/collections/donations/records", {
-        user,
+      await sbPost("donations", {
+        user: userId,
         donor_name: personalInfo.nomclient || "Anonyme",
         donor_phone: personalInfo.numeroSend || "",
         amount_fcfa: payment.amount_fcfa,
@@ -173,20 +172,20 @@ async function activateService(payment) {
 
       // Update totals
       try {
-        const totals = await pbRequest("GET", "/api/collections/donation_totals/records?filter=label='global'&limit=1");
-        if (totals.items && totals.items.length > 0) {
-          await pbRequest("PATCH", `/api/collections/donation_totals/records/${totals.items[0].id}`, {
-            total_fcfa: (totals.items[0].total_fcfa || 0) + payment.amount_fcfa,
-            donors: (totals.items[0].donors || 0) + 1,
+        const totals = await sbGet("donation_totals", "label=eq.global&limit=1");
+        if (totals && totals.length > 0) {
+          await sbPatch("donation_totals", totals[0].id, {
+            total_fcfa: (totals[0].total_fcfa || 0) + payment.amount_fcfa,
+            donors: (totals[0].donors || 0) + 1,
+            updated_at: new Date().toISOString(),
           });
         }
       } catch (_) {}
 
     } else if (type === "priority") {
-      // Activate priority on declaration
       const declId = item_key;
       if (declId) {
-        await pbRequest("PATCH", `/api/collections/declarations/records/${declId}`, {
+        await sbPatch("declarations", declId, {
           priority: true,
           priority_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         });

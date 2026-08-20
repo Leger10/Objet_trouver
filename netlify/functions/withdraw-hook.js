@@ -1,22 +1,33 @@
 // Netlify Function: Webhook receiver for MoneyFusion payout events
-// Handles: payout.session.completed, payout.session.cancelled
+// Uses Supabase REST API (PostgREST)
 
-const POCKETBASE_URL = process.env.POCKETBASE_URL || "https://retrouveobjet.pockethost.io";
-const POCKETBASE_ADMIN_TOKEN = process.env.POCKETBASE_ADMIN_TOKEN || "";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "https://uudgiamuqutgljakelkb.supabase.co";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const headers = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
 };
 
-const pbRequest = async (method, path, body) => {
-  const res = await fetch(`${POCKETBASE_URL}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(POCKETBASE_ADMIN_TOKEN ? { Authorization: `Bearer ${POCKETBASE_ADMIN_TOKEN}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
+const sbHeaders = () => ({
+  "Content-Type": "application/json",
+  apikey: SUPABASE_SERVICE_KEY,
+  Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+  Prefer: "return=representation",
+});
+
+const sbGet = async (table, filter) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}&select=*`, {
+    headers: sbHeaders(),
+  });
+  return res.json();
+};
+
+const sbPatch = async (table, id, body) => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: "PATCH",
+    headers: sbHeaders(),
+    body: JSON.stringify(body),
   });
   return res.json();
 };
@@ -41,17 +52,14 @@ exports.handler = async (event) => {
     }
 
     // Find withdrawal by moneyfusion_token
-    const withdrawals = await pbRequest(
-      "GET",
-      `/api/collections/withdrawals/records?filter=moneyfusion_token='${tokenPay}'&limit=1`
-    );
+    const withdrawals = await sbGet("withdrawals", `moneyfusion_token=eq.${tokenPay}&limit=1`);
 
-    if (!withdrawals.items || withdrawals.items.length === 0) {
+    if (!withdrawals || withdrawals.length === 0) {
       console.log("[withdraw-hook] Withdrawal not found for token:", tokenPay);
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, message: "Not found" }) };
     }
 
-    const withdrawal = withdrawals.items[0];
+    const withdrawal = withdrawals[0];
 
     // Deduplicate
     if (withdrawal.status === "paid" || withdrawal.status === "rejected") {
@@ -59,7 +67,7 @@ exports.handler = async (event) => {
     }
 
     if (eventType === "payout.session.completed") {
-      await pbRequest("PATCH", `/api/collections/withdrawals/records/${withdrawal.id}`, {
+      await sbPatch("withdrawals", withdrawal.id, {
         status: "paid",
         moneyfusion_moyen: moyen || "",
         paid_at: new Date().toISOString(),
@@ -70,16 +78,23 @@ exports.handler = async (event) => {
       // Return points to user
       if (withdrawal.user && withdrawal.amount_points) {
         try {
-          const users = await pbRequest("GET", `/api/collections/users/records/${withdrawal.user}`);
-          if (users.points !== undefined) {
-            await pbRequest("PATCH", `/api/collections/users/records/${withdrawal.user}`, {
-              points: (users.points || 0) + withdrawal.amount_points,
+          await sbPatch("users", withdrawal.user, {
+            points: withdrawal.amount_points, // will be set to correct value
+          });
+          // Better: use RPC for atomic increment
+          // For now, get current points then set
+          const users = await sbGet("users", `id=eq.${withdrawal.user}&limit=1`);
+          if (users && users.length > 0 && users[0].points !== undefined) {
+            await sbPatch("users", withdrawal.user, {
+              points: (users[0].points || 0) + withdrawal.amount_points,
             });
           }
-        } catch (_) {}
+        } catch (e) {
+          console.error("[withdraw-hook] Error returning points:", e.message);
+        }
       }
 
-      await pbRequest("PATCH", `/api/collections/withdrawals/records/${withdrawal.id}`, {
+      await sbPatch("withdrawals", withdrawal.id, {
         status: "rejected",
         rejection_reason: "Retrait annulé par MoneyFusion",
       });

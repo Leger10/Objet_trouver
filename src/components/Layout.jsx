@@ -172,7 +172,7 @@ const Layout = ({ children, hideFooter = false, title: titleProp }) => {
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex flex-col">
       {/* Top bar — minimal, native */}
-      <header className="safe-top sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-xl">
+      <header className="safe-top sticky top-0 z-40 border-b border-border/60 bg-background/90 dark:bg-[hsl(205_40%_10%)]/95 backdrop-blur-xl">
         <div className="flex h-14 w-full items-center gap-2 px-3">
           {showBack ? (
             <button
@@ -272,7 +272,7 @@ const Layout = ({ children, hideFooter = false, title: titleProp }) => {
                                 <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
                                   {n.body}
                                 </p>
-                                <p className="mt-1 text-[10px] text-muted-foreground/50">
+                                <p className="mt-1 text-[10px] text-muted-foreground/70">
                                   {timeSince(n.created)}
                                 </p>
                               </div>
@@ -314,7 +314,7 @@ const Layout = ({ children, hideFooter = false, title: titleProp }) => {
 
       {/* Bottom navigation — native tab bar */}
       {showNav && (
-        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border/50 bg-background/80 backdrop-blur-2xl nav-shadow">
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-border/50 bg-background/90 dark:bg-[hsl(205_40%_10%)]/95 backdrop-blur-2xl nav-shadow">
           <div className="mx-auto flex w-full max-w-[44rem] items-stretch justify-around px-0.5 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
             {TABS.map((t) => {
               const active = t.exact
