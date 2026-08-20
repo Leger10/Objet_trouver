@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Trophy } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";

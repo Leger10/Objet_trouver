@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import Layout from '@/components/Layout';
@@ -42,23 +42,30 @@ const LoginPage = () => {
                     <BrandLogo size="lg" imgClassName="rounded-2xl" />
                     <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{branding.tagline}</p>
                 </div>
-                <h1 className="text-3xl font-extrabold">Connexion</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Accédez à vos correspondances et à votre portefeuille de points.</p>
-                <form onSubmit={submit} className="mt-8 space-y-4">
-                    <label className="flex flex-col gap-2 text-sm font-bold">
-                        Email
-                        <input type="email" required className={field} value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm font-bold">
-                        Mot de passe
-                        <input type="password" required className={field} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
-                    </label>
-                    {error && <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">{error}</p>}
-                    <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-extrabold text-primary-foreground disabled:opacity-60 text-base min-h-[56px]">
-                        {busy && <Loader2 className="h-5 w-5 animate-spin" />} Se connecter
-                    </button>
-                </form>
-                <p className="mt-6 text-sm text-muted-foreground">
+                <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-lg">
+                    <h1 className="text-2xl font-extrabold">Connexion</h1>
+                    <p className="mt-1.5 text-sm text-muted-foreground">Accédez à vos correspondances et points.</p>
+                    <form onSubmit={submit} className="mt-6 space-y-4">
+                        <label className="flex flex-col gap-1.5 text-sm font-bold">
+                            Email
+                            <input type="email" required className={field} value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+                        </label>
+                        <label className="flex flex-col gap-1.5 text-sm font-bold">
+                            Mot de passe
+                            <input type="password" required className={field} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
+                        </label>
+                        <div className="text-right">
+                            <Link to="/mot-de-passe-oublie" className="text-xs font-bold text-primary underline underline-offset-4">
+                                Mot de passe oublié ?
+                            </Link>
+                        </div>
+                        {error && <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">{error}</p>}
+                        <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-extrabold text-primary-foreground shadow-lg shadow-primary/25 disabled:opacity-60 text-base min-h-[52px] transition-transform active:scale-[0.98]">
+                            {busy && <Loader2 className="h-5 w-5 animate-spin" />} Se connecter
+                        </button>
+                    </form>
+                </div>
+                <p className="mt-5 text-center text-sm text-muted-foreground">
                     Pas encore de compte ?{' '}
                     <Link to="/inscription" className="font-bold text-primary underline underline-offset-4">
                         Créer un compte gratuit

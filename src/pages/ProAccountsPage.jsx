@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -13,8 +13,8 @@ import {
   ORG_TYPES,
   orgTypeLabel,
   orgTypeEmoji,
-  createPayment,
 } from "@/lib/payments";
+import { createPendingPayment } from "@/lib/moneyfusion";
 import { formatNumber, formatDate } from "@/lib/format";
 
 const field =
@@ -46,14 +46,12 @@ const ProAccountsPage = () => {
     try {
       const [proList, payList] = await Promise.all([
         pb.collection("pro_accounts").getList(1, 1, {
-          filter: pb.filter("owner = {:u}", { u: user.id }),
+          filter: pb.filter('"user" = {:u}', { u: user.id }),
           sort: "-created",
           requestKey: "pro-acc",
         }),
         pb.collection("payments").getFullList({
-          filter: pb.filter('user = {:u} && type = "pro_account"', {
-            u: user.id,
-          }),
+          filter: pb.filter('"user" = {:u}', { u: user.id }),
           sort: "-created",
           requestKey: "pro-payments",
         }),
@@ -112,13 +110,12 @@ const ProAccountsPage = () => {
         });
       }
       // Create payment record
-      await createPayment({
-        user: user.id,
+      await createPendingPayment({
+        userId: user.id,
         type: "pro_account",
         itemKey: checkout.key,
         itemLabel: `Compte Pro ${checkout.name} — ${form.org_name.trim()}`,
         amountFcfa: checkout.price,
-        method,
         description: ref ? `Réf: ${ref}` : "",
       });
       setDone({ plan: checkout });
@@ -399,8 +396,42 @@ const ProAccountsPage = () => {
             </p>
             <PaymentMethodPicker
               amount={checkout.price}
-              onConfirm={confirmPayment}
-              busy={busy}
+              onBeforePay={async () => {
+                if (!user) return;
+                if (!proAccount) {
+                  const rec = await pb.collection("pro_accounts").create({
+                    owner: user.id,
+                    org_type: form.org_type,
+                    org_name: form.org_name.trim(),
+                    org_description: form.org_description.trim(),
+                    plan: checkout.key,
+                    max_users: checkout.maxUsers,
+                    contact_email: form.contact_email.trim(),
+                    contact_phone: form.contact_phone.trim(),
+                    status: "pending",
+                  });
+                  setProAccount(rec);
+                } else {
+                  await pb.collection("pro_accounts").update(proAccount.id, {
+                    plan: checkout.key,
+                    max_users: checkout.maxUsers,
+                    org_type: form.org_type,
+                    org_name: form.org_name.trim(),
+                    org_description: form.org_description.trim(),
+                    contact_email: form.contact_email.trim(),
+                    contact_phone: form.contact_phone.trim(),
+                  });
+                }
+                await createPendingPayment({
+                  userId: user.id,
+                  type: "pro_account",
+                  itemKey: checkout.key,
+                  itemLabel: `Compte Pro ${checkout.name} — ${form.org_name.trim()}`,
+                  amountFcfa: checkout.price,
+                });
+              }}
+              type="pro_account"
+              itemId={checkout.key}
               ctaLabel="Payer le 1er mois"
             />
           </div>

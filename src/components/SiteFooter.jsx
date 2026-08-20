@@ -22,7 +22,7 @@ const SiteFooter = () => {
     ].filter((s) => s.href);
 
     return (
-        <footer className="mt-auto border-t border-border bg-[hsl(206_40%_8%)] text-white">
+        <footer className="mt-auto border-t border-border bg-[hsl(206_40%_8%)] dark:bg-[hsl(206_40%_5%)] text-white">
             <div className="mx-auto w-full max-w-[90rem] px-4 sm:px-6 py-10 sm:py-12">
                 <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
@@ -39,13 +39,13 @@ const SiteFooter = () => {
                         <ul className="space-y-2.5 text-sm text-white/80">
                             {branding.address && (
                                 <li className="flex gap-2">
-                                    <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)]" />
+                                    <MapPin className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
                                     <span>{branding.address}</span>
                                 </li>
                             )}
                             {branding.phone && (
                                 <li className="flex gap-2">
-                                    <Phone className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)]" />
+                                    <Phone className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
                                     <a href={`tel:${branding.phone.replace(/\s/g, '')}`} className="hover:text-white underline-offset-2 hover:underline">
                                         {branding.phone}
                                     </a>
@@ -53,7 +53,7 @@ const SiteFooter = () => {
                             )}
                             {branding.email && (
                                 <li className="flex gap-2">
-                                    <Mail className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)]" />
+                                    <Mail className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
                                     <a href={`mailto:${branding.email}`} className="hover:text-white underline-offset-2 hover:underline break-all">
                                         {branding.email}
                                     </a>
@@ -61,7 +61,7 @@ const SiteFooter = () => {
                             )}
                             {branding.hours && (
                                 <li className="flex gap-2">
-                                    <Clock className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)]" />
+                                    <Clock className="h-4 w-4 shrink-0 mt-0.5 text-[var(--brand-green,#2D6A4F)] dark:text-accent" />
                                     <span>{branding.hours}</span>
                                 </li>
                             )}
@@ -82,15 +82,19 @@ const SiteFooter = () => {
                         {socials.length === 0 ? (
                             <p className="text-sm text-white/50">Liens à configurer dans l&apos;admin.</p>
                         ) : (
-                            <ul className="space-y-2 text-sm text-white/80">
+                            <div className="flex flex-wrap gap-2">
                                 {socials.map((s) => (
-                                    <li key={s.label}>
-                                        <a href={s.href} target="_blank" rel="noreferrer" className="hover:text-white underline-offset-2 hover:underline">
-                                            {s.label}
-                                        </a>
-                                    </li>
+                                    <a
+                                        key={s.label}
+                                        href={s.href}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+                                    >
+                                        {s.label}
+                                    </a>
                                 ))}
-                            </ul>
+                            </div>
                         )}
                         <p className="mt-4 text-xs text-white/50">
                             Devise : <span className="font-bold text-white/80">{branding.currency}</span>

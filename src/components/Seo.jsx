@@ -1,5 +1,5 @@
 import React from 'react';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 
 // Social + canonical tags only. The page's own <Helmet> must keep a literal
 // <title> and <meta name="description">, because the llms.txt build step reads

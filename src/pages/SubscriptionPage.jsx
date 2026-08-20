@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -7,8 +7,10 @@ import { CheckCircle2, Crown, Loader2, Sparkles, X } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePaginate, ListFooter } from "@/components/PaginatedList";
 import PaymentMethodPicker from "@/components/PaymentMethodPicker";
-import { SUBSCRIPTION_PLANS, createPayment } from "@/lib/payments";
+import { SUBSCRIPTION_PLANS } from "@/lib/payments";
+import { createPendingPayment } from "@/lib/moneyfusion";
 import { formatNumber, formatDate } from "@/lib/format";
 
 const SubscriptionPage = () => {
@@ -28,12 +30,12 @@ const SubscriptionPage = () => {
     try {
       const [subList, payList] = await Promise.all([
         pb.collection("subscriptions").getList(1, 1, {
-          filter: pb.filter('user = {:u} && status = "active"', { u: user.id }),
+          filter: pb.filter('"user" = {:u} && status = "active"', { u: user.id }),
           sort: "-created",
           requestKey: "sub-active",
         }),
         pb.collection("payments").getFullList({
-          filter: pb.filter('user = {:u} && type = "subscription"', {
+          filter: pb.filter('"user" = {:u}', {
             u: user.id,
           }),
           sort: "-created",
@@ -54,6 +56,8 @@ const SubscriptionPage = () => {
 
   const currentPlan = user?.plan || "free";
 
+  const paymentPaginate = usePaginate(payments);
+
   const startCheckout = (plan) => {
     if (!isAuthed) {
       toast.error("Connectez-vous pour vous abonner.");
@@ -71,13 +75,12 @@ const SubscriptionPage = () => {
     if (!checkout || !user) return;
     setBusy(true);
     try {
-      await createPayment({
-        user: user.id,
+      await createPendingPayment({
+        userId: user.id,
         type: "subscription",
         itemKey: checkout.key,
         itemLabel: `Abonnement ${checkout.name}`,
         amountFcfa: checkout.price,
-        method,
         description: ref ? `Réf: ${ref}` : "",
       });
       setDone({ plan: checkout, method });
@@ -225,12 +228,12 @@ const SubscriptionPage = () => {
         {/* Payment history */}
         {isAuthed && payments.length > 0 && (
           <div className="mt-6 rounded-2xl border border-border bg-card p-5">
-            <p className="font-bold">Historique des paiements d'abonnement</p>
+            <p className="font-bold">Historique des paiements d&apos;abonnement</p>
             <ul className="mt-3 space-y-2">
-              {payments.map((p) => (
+              {paymentPaginate.shown.map((p) => (
                 <li
                   key={p.id}
-                  className="flex flex-wrap items-center gap-3 rounded-xl bg-muted/40 px-4 py-3 text-sm"
+                   className="flex flex-wrap items-center gap-3 rounded-2xl bg-muted/40 px-4 py-3 text-sm"
                 >
                   <span className="flex-1 font-semibold">{p.item_label}</span>
                   <span className="font-extrabold text-primary">
@@ -245,6 +248,7 @@ const SubscriptionPage = () => {
                 </li>
               ))}
             </ul>
+            <ListFooter {...paymentPaginate} total={payments.length} />
           </div>
         )}
 
@@ -303,8 +307,18 @@ const SubscriptionPage = () => {
             </div>
             <PaymentMethodPicker
               amount={checkout.price}
-              onConfirm={confirmPayment}
-              busy={busy}
+              onBeforePay={async () => {
+                if (!user) return;
+                await createPendingPayment({
+                  userId: user.id,
+                  type: "subscription",
+                  itemKey: checkout.key,
+                  itemLabel: `Abonnement ${checkout.name}`,
+                  amountFcfa: checkout.price,
+                });
+              }}
+              type="subscription"
+              itemId={checkout.key}
               ctaLabel="Payer l'abonnement"
             />
           </div>

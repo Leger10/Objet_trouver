@@ -1,5 +1,5 @@
 import React from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -48,7 +48,7 @@ const DeclareHubPage = () => {
           >
             <Link
               to="/declarer/perdu"
-              className="group flex items-center gap-4 rounded-3xl bg-primary p-5 text-primary-foreground min-h-[88px] active:scale-[0.98] transition-transform"
+              className="group flex items-center gap-4 rounded-3xl bg-primary p-5 text-primary-foreground min-h-[88px] active:scale-[0.98] transition-transform shadow-lg shadow-primary/25"
             >
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15">
                 <Search className="h-7 w-7" />
@@ -70,7 +70,7 @@ const DeclareHubPage = () => {
           >
             <Link
               to="/declarer/retrouve"
-              className="group flex items-center gap-4 rounded-3xl bg-accent p-5 text-accent-foreground min-h-[88px] active:scale-[0.98] transition-transform"
+              className="group flex items-center gap-4 rounded-3xl bg-accent p-5 text-accent-foreground min-h-[88px] active:scale-[0.98] transition-transform shadow-lg shadow-accent/25"
             >
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white/15">
                 <HandHeart className="h-7 w-7" />
@@ -108,7 +108,7 @@ const DeclareHubPage = () => {
           ].map(({ i: Icon, t, d }) => (
             <div
               key={t}
-              className="rounded-2xl border border-border bg-card p-4"
+              className="rounded-2xl border border-border bg-card p-4 shadow-sm"
             >
               <Icon className="h-5 w-5 text-primary" />
               <p className="mt-2 text-sm font-bold">{t}</p>
@@ -118,7 +118,7 @@ const DeclareHubPage = () => {
         </div>
 
         {!isAuthed && (
-          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-primary/20 bg-secondary/50 p-4">
+          <div className="mt-6 flex items-start gap-3 rounded-2xl border border-primary/20 bg-secondary/50 p-4 shadow-sm">
             <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p className="text-sm text-muted-foreground">
               La déclaration nécessite un compte gratuit.{" "}

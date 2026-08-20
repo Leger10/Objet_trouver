@@ -8,15 +8,20 @@
    BASE STYLES - Native app feel
    ============================================================ */
 
-html,
-body {
+html {
   font-family: "Manrope", system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  overscroll-behavior-y: none;
   scroll-behavior: smooth;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+body {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   min-height: 100dvh;
@@ -90,7 +95,7 @@ h1, h2, h3, h4, h5, h6,
     --secondary: 165 30% 18%;
     --secondary-foreground: 160 60% 90%;
     --muted: 205 25% 16%;
-    --muted-foreground: 205 15% 65%;
+    --muted-foreground: 205 15% 72%;
     --accent: 162 62% 45%;
     --accent-foreground: 205 40% 8%;
     --destructive: 0 62% 40%;
@@ -410,6 +415,27 @@ h1, h2, h3, h4, h5, h6,
   }
   .category-tile-inactive {
     @apply border-border bg-card hover:border-primary/40 hover:rt-shadow-sm;
+  }
+}
+
+/* ============================================================
+   HOVER & NAV EFFECTS - Mobile-first premium
+   ============================================================ */
+
+/* Bottom nav tab — press feedback + hover glow */
+.nav-tab {
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s ease;
+}
+.nav-tab:active {
+  transform: scale(0.92);
+  transition: transform 0.1s ease;
+}
+
+@media (hover: hover) {
+  .nav-tab:hover .nav-tab-icon:not(.text-primary) {
+    background-color: hsl(var(--muted) / 0.6);
+    transform: scale(1.05);
   }
 }
 

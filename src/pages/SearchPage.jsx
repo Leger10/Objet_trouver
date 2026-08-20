@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
@@ -36,6 +36,7 @@ const SearchPage = () => {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -107,13 +108,17 @@ const SearchPage = () => {
         );
       }
       try {
-        const res = await pb.collection("declarations").getList(1, 40, {
+        const res = await pb.collection("declarations").getList(page, 20, {
           filter: parts.join(" && "),
           sort: "-priority,-created",
           expand: "category",
           requestKey: "search",
         });
-        setItems(res.items);
+        if (page === 1) {
+          setItems(res.items);
+        } else {
+          setItems((prev) => [...prev, ...res.items]);
+        }
         setTotal(res.totalItems);
       } catch (_) {
         setItems([]);
@@ -124,7 +129,11 @@ const SearchPage = () => {
     }, 280);
 
     return () => clearTimeout(t);
-  }, [filters, refreshKey]);
+  }, [filters, refreshKey, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters.q, filters.kind, filters.category, filters.city, filters.zone, filters.person_name, filters.brand, filters.color, filters.doc_last4, filters.from, filters.to]);
 
   const set = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
 
@@ -319,6 +328,16 @@ const SearchPage = () => {
                 )}
               </React.Fragment>
             ))}
+            {!loading && items.length < total && (
+              <div className="mt-4 lg:col-span-2">
+                <button
+                  onClick={() => setPage((p) => p + 1)}
+                  className="w-full rounded-2xl border border-border bg-card py-3 text-sm font-bold text-muted-foreground active:scale-[0.98]"
+                >
+                  Voir plus ({items.length}/{total})
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </PullToRefresh>

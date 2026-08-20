@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, Save, ShieldAlert, Palette } from "lucide-react";
+import { Loader2, RotateCcw, Save, ShieldAlert, Palette, Image, Megaphone } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import BrandLogo from "@/components/BrandLogo";
@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
   BRANDING_DEFAULTS,
+  DEFAULT_HERO,
   isHexColor,
   isValidEmail,
 } from "@/lib/brandingDefaults";
@@ -25,6 +26,8 @@ const AdminBrandingPage = () => {
   const { branding, refresh, defaults } = useBranding();
   const [form, setForm] = useState({ ...BRANDING_DEFAULTS });
   const [logoFile, setLogoFile] = useState(null);
+  const [heroFile, setHeroFile] = useState(null);
+  const [heroPreview, setHeroPreview] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -50,8 +53,14 @@ const AdminBrandingPage = () => {
       social_whatsapp: branding.social_whatsapp || "",
       currency: branding.currency,
       language: branding.language,
+      hero_image_url: branding.hero_image_url || "",
+      hero_link: branding.hero_link || "",
+      sponsor_name: branding.sponsor_name || "",
+      sponsor_url: branding.sponsor_url || "",
+      sponsor_tagline: branding.sponsor_tagline || "",
     });
     setPreviewUrl(branding.logo_url);
+    setHeroPreview(branding.hero_image_url || "");
   }, [branding]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -69,6 +78,21 @@ const AdminBrandingPage = () => {
     }
     setLogoFile(f);
     setPreviewUrl(URL.createObjectURL(f));
+  };
+
+  const onHeroPick = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) {
+      toast.error("Fichier image requis (PNG, JPG, WebP)");
+      return;
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error("Image trop volumineuse (max 5 Mo)");
+      return;
+    }
+    setHeroFile(f);
+    setHeroPreview(URL.createObjectURL(f));
   };
 
   const validate = () => {
@@ -103,17 +127,31 @@ const AdminBrandingPage = () => {
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("key", "main");
       Object.entries(form).forEach(([k, v]) => {
         if (k === "logo_url" && logoFile) return;
+        if (k === "hero_image_url" && heroFile) return;
         fd.append(k, v ?? "");
       });
       if (logoFile) fd.append("logo_file", logoFile);
+      if (heroFile) fd.append("hero_file", heroFile);
 
       if (branding.id) {
         await pb.collection("branding_settings").update(branding.id, fd);
       } else {
-        await pb.collection("branding_settings").create(fd);
+        // First create: create the row without files, then upload files via update
+        const fdNoFiles = new FormData();
+        for (const [k, v] of fd.entries()) {
+          if (v instanceof File) continue;
+          fdNoFiles.append(k, v);
+        }
+        const created = await pb.collection("branding_settings").create(fdNoFiles);
+        // Now upload files if any
+        if (created && (logoFile || heroFile)) {
+          const fdFiles = new FormData();
+          if (logoFile) fdFiles.append("logo_file", logoFile);
+          if (heroFile) fdFiles.append("hero_file", heroFile);
+          await pb.collection("branding_settings").update(created.id, fdFiles);
+        }
       }
 
       // Notify admins
@@ -141,6 +179,7 @@ const AdminBrandingPage = () => {
       }
 
       setLogoFile(null);
+      setHeroFile(null);
       await refresh();
       toast.success("Branding enregistré");
     } catch (e) {
@@ -155,7 +194,9 @@ const AdminBrandingPage = () => {
   const resetDefaults = () => {
     setForm({ ...defaults });
     setLogoFile(null);
+    setHeroFile(null);
     setPreviewUrl(defaults.logo_url);
+    setHeroPreview(defaults.hero_image_url || "");
     toast.message("Valeurs par défaut chargées", {
       description: "Cliquez sur Enregistrer pour appliquer.",
     });
@@ -278,6 +319,88 @@ const AdminBrandingPage = () => {
                     onChange={onLogoPick}
                     className="block w-full text-sm"
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className={card}>
+              <div className="flex items-center gap-2 mb-3">
+                <Image className="h-4 w-4 text-primary" />
+                <p className="text-sm font-extrabold">Image Hero & Sponsor</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-4">
+                Configurez l&apos;image de bannière de la page d&apos;accueil et les informations du sponsor/partenaire affiché.
+              </p>
+
+              <div className="grid gap-3">
+                <div>
+                  <label className={label}>URL de l&apos;image hero</label>
+                  <input
+                    className={field}
+                    value={form.hero_image_url}
+                    onChange={(e) => {
+                      set("hero_image_url", e.target.value);
+                      if (!heroFile) setHeroPreview(e.target.value);
+                    }}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <label className={label}>Ou téléverser une image hero</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onHeroPick}
+                    className="block w-full text-sm"
+                  />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Recommandé : 1200×400px, max 5 Mo. Affichée en pleine largeur.
+                  </p>
+                </div>
+                <div>
+                  <label className={label}>Lien du hero (optionnel)</label>
+                  <input
+                    className={field}
+                    value={form.hero_link}
+                    onChange={(e) => set("hero_link", e.target.value)}
+                    placeholder="https://... (lien vers le sponsor)"
+                  />
+                </div>
+
+                <div className="border-t border-border pt-3 mt-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Megaphone className="h-4 w-4 text-accent" />
+                    <p className="text-xs font-extrabold">Informations sponsor / partenaire</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className={label}>Nom du sponsor</label>
+                      <input
+                        className={field}
+                        value={form.sponsor_name}
+                        onChange={(e) => set("sponsor_name", e.target.value)}
+                        placeholder="Ex : Orange Sénégal"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={label}>Tagline du sponsor</label>
+                      <input
+                        className={field}
+                        value={form.sponsor_tagline}
+                        onChange={(e) => set("sponsor_tagline", e.target.value)}
+                        placeholder="Ex : Partenaire officiel de RetrouveMoi"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={label}>URL du sponsor</label>
+                      <input
+                        className={field}
+                        value={form.sponsor_url}
+                        onChange={(e) => set("sponsor_url", e.target.value)}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -422,6 +545,33 @@ const AdminBrandingPage = () => {
 
           {/* Live preview */}
           <div className="lg:sticky lg:top-20 self-start space-y-4">
+            <div className={card}>
+              <p className="text-sm font-extrabold mb-3">Aperçu — Hero</p>
+              <div className="relative h-36 overflow-hidden rounded-xl bg-muted">
+                {heroPreview ? (
+                  <img
+                    src={heroPreview}
+                    alt="Hero preview"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="grid h-full place-items-center text-xs text-muted-foreground">
+                    Aucune image hero
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                {form.sponsor_name && (
+                  <div className="absolute bottom-2 left-2 right-2 flex items-center gap-2 rounded-lg bg-black/50 px-3 py-1.5 text-[10px] text-white backdrop-blur-sm">
+                    <Megaphone className="h-3 w-3 shrink-0" />
+                    <span className="font-bold">{form.sponsor_name}</span>
+                    {form.sponsor_tagline && (
+                      <span className="text-white/70">— {form.sponsor_tagline}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className={card}>
               <p className="text-sm font-extrabold mb-3">Aperçu en direct</p>
               <div

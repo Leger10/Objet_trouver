@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Helmet } from "react-helmet";
+import React, { useMemo, useState, useEffect } from "react";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -12,7 +12,11 @@ import {
 } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
+import SearchableSelect from "@/components/SearchableSelect";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBranding } from "@/contexts/BrandingContext";
+import { LOGO_URL } from "@/lib/brandingDefaults";
+import { metaForSlug } from "@/lib/categories";
 import {
   savePV,
   printPV,
@@ -23,6 +27,7 @@ import {
   maskPhonePV,
   qrUrl,
 } from "@/lib/pv";
+import { onCompleteRestitution } from "@/lib/notificationService";
 
 const card = "rounded-2xl border border-border bg-card p-5";
 const inputCls =
@@ -52,15 +57,31 @@ const EMPTY = {
 
 const RestitutionPVPage = () => {
   const { user } = useAuth();
+  const { branding } = useBranding();
   const isAdmin = user?.role === "admin";
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [lastPV, setLastPV] = useState(null);
+  const [declarations, setDeclarations] = useState([]);
+  const [selectedDecl, setSelectedDecl] = useState("");
+  const [categories, setCategories] = useState([]);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const pvNumber = useMemo(() => generatePVNumber("restitution"), []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    pb.collection("declarations")
+      .getFullList({ sort: "-created", requestKey: "rpv-decl" })
+      .then((list) => setDeclarations(list))
+      .catch(() => {});
+    pb.collection("categories")
+      .getFullList({ sort: "position", requestKey: "rpv-cat" })
+      .then((list) => setCategories(list))
+      .catch(() => {});
+  }, [isAdmin]);
 
   const previewPV = useMemo(
     () => ({
@@ -130,11 +151,26 @@ const RestitutionPVPage = () => {
       const rec = await savePV({
         type: "restitution",
         data: form,
+        relatedDeclaration: selectedDecl || null,
         generatedBy: user.id,
       });
       const full = { ...rec, data: form };
       setLastPV(full);
       printPV(full);
+
+      if (selectedDecl) {
+        try {
+          const decl = await pb.collection("declarations").getOne(selectedDecl);
+          await pb.collection("declarations").update(selectedDecl, {
+            status: "returned",
+            pv_id: rec.id,
+          });
+          // Trigger notifications + email + archiving
+          onCompleteRestitution(rec, decl, null).catch(() => {});
+          toast.success("Déclaration marquée 'Objet restitué'");
+        } catch (_) {}
+      }
+
       toast.success("Procès-verbal généré", {
         description: `N° ${rec.pv_number}`,
       });
@@ -302,10 +338,15 @@ const RestitutionPVPage = () => {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className={labelCls}>Catégorie *</label>
-                  <input
-                    className={inputCls}
+                  <SearchableSelect
+                    placeholder="Rechercher une catégorie…"
                     value={form.objectCategory}
-                    onChange={(e) => set("objectCategory", e.target.value)}
+                    onChange={(v) => set("objectCategory", v)}
+                    items={categories.map((c) => ({
+                      value: c.name,
+                      label: `${metaForSlug(c.slug).emoji} ${c.name}`,
+                      sub: metaForSlug(c.slug).group,
+                    }))}
                   />
                 </div>
                 <div>
@@ -344,6 +385,27 @@ const RestitutionPVPage = () => {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className={card}>
+              <p className="text-sm font-extrabold mb-3">
+                Déclaration associée
+              </p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Sélectionnez la déclaration de perte correspondante (optionnel).
+              </p>
+              <SearchableSelect
+                placeholder="Rechercher une déclaration…"
+                value={selectedDecl}
+                onChange={setSelectedDecl}
+                items={declarations
+                  .filter((d) => d.kind === "lost")
+                  .map((d) => ({
+                    value: d.id,
+                    label: d.title,
+                    sub: `— ${d.status}`,
+                  }))}
+              />
             </div>
 
             <div className={card}>
@@ -432,6 +494,9 @@ const RestitutionPVPage = () => {
 
 const PreviewRestitution = ({ pv }) => {
   const d = pv.data;
+  const { branding } = useBranding();
+  const logoSrc = branding?.logo_url || LOGO_URL;
+  const brandName = branding?.app_name || "RetrouveMoi";
   const Row = ({ l, v }) => (
     <div className="flex gap-2 py-1.5 border-b border-border/60 text-xs">
       <span className="w-36 shrink-0 font-bold text-muted-foreground">{l}</span>
@@ -451,10 +516,12 @@ const PreviewRestitution = ({ pv }) => {
   return (
     <div className="rounded-xl border border-border bg-background p-4 text-foreground">
       <div className="flex items-center gap-2 border-b-2 border-accent pb-2">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-xs font-extrabold text-accent-foreground">
-          O
-        </span>
-        <span className="font-extrabold text-sm">RetrouveMoi</span>
+        <img
+          src={logoSrc}
+          alt={brandName}
+          className="h-8 w-8 rounded-lg object-contain"
+        />
+        <span className="font-extrabold text-sm">{brandName}</span>
       </div>
       <p className="mt-3 text-center text-xs font-extrabold uppercase">
         Procès-verbal de restitution d'objet trouvé

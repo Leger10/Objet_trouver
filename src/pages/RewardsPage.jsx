@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -26,13 +26,19 @@ import {
   serviceByKey,
   maskPhone,
 } from "@/lib/retrouve";
+import { usePaginate, ListFooter } from "@/components/PaginatedList";
 import PaymentMethodPicker from "@/components/PaymentMethodPicker";
 import {
   FCFA_SERVICES,
-  createPayment,
   computeCommission,
   computeNet,
 } from "@/lib/payments";
+import {
+  createPendingPayment,
+  initiateWithdrawal,
+  createWithdrawalRecord,
+  getWithdrawMode,
+} from "@/lib/moneyfusion";
 
 const card = "rounded-2xl border border-border bg-card p-5";
 const TABS = ["Statut", "Boutique", "Cadeaux", "Retrait", "Historique"];
@@ -71,6 +77,7 @@ const RewardsPage = () => {
   const [wPoints, setWPoints] = useState("");
   const [wMethod, setWMethod] = useState("");
   const [wDetails, setWDetails] = useState("");
+  const [wName, setWName] = useState("");
   const [showPhone, setShowPhone] = useState(false);
 
   // Confirmation dialog state
@@ -107,7 +114,7 @@ const RewardsPage = () => {
           .collection("withdrawals")
           .getFullList({ sort: "-created", requestKey: "rw-wd" }),
         pb.collection("points_ledger").getFullList({
-          filter: pb.filter("user = {:u}", { u: user.id }),
+          filter: pb.filter('"user" = {:u}', { u: user.id }),
           sort: "-created",
           requestKey: "rw-lg",
         }),
@@ -161,13 +168,12 @@ const RewardsPage = () => {
     if (!fcfaCheckout || !user) return;
     setBusy(true);
     try {
-      await createPayment({
-        user: user.id,
+      await createPendingPayment({
+        userId: user.id,
         type: "service",
         itemKey: fcfaCheckout.key,
         itemLabel: fcfaCheckout.label,
         amountFcfa: fcfaCheckout.price,
-        method,
         description: ref ? `Réf: ${ref}` : "",
       });
       setFcfaDone(fcfaCheckout);
@@ -211,6 +217,10 @@ const RewardsPage = () => {
       toast.error("Solde insuffisant.");
       return;
     }
+    if (!wName.trim()) {
+      toast.error("Veuillez indiquer le nom sur le compte mobile money.");
+      return;
+    }
     if (!wMethod.trim()) {
       toast.error("Veuillez indiquer un moyen de paiement.");
       return;
@@ -222,27 +232,65 @@ const RewardsPage = () => {
     }
     setConfirm({
       type: "withdraw",
-      payload: { pts, method: wMethod, details: wDetails },
+      payload: { pts, method: wMethod, details: wDetails, name: wName.trim() },
     });
   };
 
   const confirmWithdrawal = async () => {
-    const { pts, method, details } = confirm.payload;
+    const { pts, method, details, name } = confirm.payload;
     setBusy(true);
     try {
-      await pb.collection("withdrawals").create({
+      const netAmount = computeNet(pts);
+      const commission = computeCommission(pts);
+      const withdrawMode = getWithdrawMode(method);
+
+      // Debit points immediately
+      const debitAmount = -pts;
+      await pb.collection("points_ledger").create({
         user: user.id,
-        amount_points: pts,
-        payment_method: method.trim(),
-        payment_details: details.trim(),
-        status: "pending",
+        amount: debitAmount,
+        reason: "withdrawal",
+        description: `Retrait de ${pts} pts via ${method}`,
       });
+      await pb.collection("users").update(user.id, {
+        "points-": pts,
+      });
+
+      // Create pending withdrawal record
+      const rec = await createWithdrawalRecord({
+        userId: user.id,
+        amountPoints: pts,
+        amountFcfa: pts,
+        commissionFcfa: commission,
+        netAmount,
+        phone: details.trim(),
+        withdrawMode,
+      });
+
+      // Initiate MoneyFusion payout
+      try {
+        const mfResult = await initiateWithdrawal({
+          phone: details.trim(),
+          amount: netAmount,
+          withdrawMode,
+          countryCode: "ci",
+        });
+        if (mfResult.tokenPay) {
+          await pb.collection("withdrawals").update(rec.id, {
+            moneyfusion_token: mfResult.tokenPay,
+          });
+        }
+      } catch (mfErr) {
+        console.error("MoneyFusion payout error:", mfErr);
+      }
+
       toast.success(`Retrait de ${pts} pts demandé`, {
-        description: "Traitement sous 3 jours ouvrés.",
+        description: `${computeNet(pts).toLocaleString()} FCFA envoyés à ${name}. Commission : ${commission} FCFA.`,
       });
       setWPoints("");
       setWMethod("");
       setWDetails("");
+      setWName("");
       load();
     } catch (e) {
       toast.error(e?.response?.message || "Erreur lors de la demande.");
@@ -298,6 +346,11 @@ const RewardsPage = () => {
     return mapped.reverse();
   }, [filteredLedger]);
 
+  const withdrawalPaginate = usePaginate(withdrawals);
+  const ledgerPaginate = usePaginate(ledgerWithBalance);
+  const giftsPaginate = usePaginate(gifts);
+  const purchasesPaginate = usePaginate(purchases);
+
   return (
     <Layout>
       <Helmet>
@@ -351,7 +404,7 @@ const RewardsPage = () => {
 
         {/* This-month mini stats */}
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-secondary/60 px-4 py-3">
+          <div className="rounded-2xl bg-secondary/60 px-4 py-3">
             <p className="text-xs font-semibold text-muted-foreground">
               Gagnés ce mois-ci
             </p>
@@ -359,7 +412,7 @@ const RewardsPage = () => {
               +{monthEarned.toLocaleString()} pts
             </p>
           </div>
-          <div className="rounded-xl bg-muted px-4 py-3">
+          <div className="rounded-2xl bg-muted px-4 py-3">
             <p className="text-xs font-semibold text-muted-foreground">
               Dépensés ce mois-ci
             </p>
@@ -404,7 +457,7 @@ const RewardsPage = () => {
                   return (
                     <div
                       key={b.key}
-                      className={`flex items-center gap-4 rounded-xl p-4 border ${reached ? "border-accent bg-secondary" : "border-border bg-muted/40"}`}
+                      className={`flex items-center gap-4 rounded-2xl p-4 border ${reached ? "border-accent bg-secondary" : "border-border bg-muted/40"}`}
                     >
                       <span className="text-2xl">{b.emoji}</span>
                       <div className="flex-1">
@@ -454,7 +507,7 @@ const RewardsPage = () => {
                     return (
                       <li
                         key={p.id}
-                        className="flex items-center gap-3 rounded-xl border border-accent/30 bg-secondary/40 px-4 py-3 text-sm"
+                        className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-secondary/40 px-4 py-3 text-sm"
                       >
                         <span className="text-xl">{svc?.emoji || "✨"}</span>
                         <span className="flex-1 font-bold">
@@ -475,7 +528,7 @@ const RewardsPage = () => {
         {/* TAB 1 — Boutique de services */}
         {!loading && tab === 1 && (
           <div className="mt-6">
-            <div className="mb-4 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            <div className="mb-4 rounded-2xl bg-muted px-4 py-3 text-sm text-muted-foreground">
               Solde actuel :{" "}
               <span className="font-extrabold text-primary">
                 {points.toLocaleString()} pts
@@ -618,7 +671,7 @@ const RewardsPage = () => {
               <p className="text-sm text-muted-foreground mb-2">
                 Conversion : 1 point = 1 FCFA. Minimum 5 000 points.
               </p>
-              <div className="mb-4 flex items-center gap-2 rounded-xl bg-secondary/60 px-3 py-2 text-sm">
+              <div className="mb-4 flex items-center gap-2 rounded-2xl bg-secondary/60 px-3 py-2 text-sm">
                 <ShieldCheck className="h-4 w-4 text-accent" />
                 <span>
                   Solde :{" "}
@@ -675,6 +728,18 @@ const RewardsPage = () => {
                 </div>
                 <div>
                   <label className="text-sm font-semibold mb-1 block">
+                    Nom sur le compte mobile money
+                  </label>
+                  <input
+                    type="text"
+                    value={wName}
+                    onChange={(e) => setWName(e.target.value)}
+                    placeholder="Ex : KOFFI Jean"
+                    className="w-full rounded-xl border border-input bg-background px-4 py-3 text-base outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">
                     Moyen de paiement
                   </label>
                   <select
@@ -684,9 +749,9 @@ const RewardsPage = () => {
                   >
                     <option value="">-- Choisir --</option>
                     <option value="Orange Money">Orange Money</option>
-                    <option value="Move Money">Move Money</option>
                     <option value="Wave">Wave</option>
-                    <option value="Virement bancaire">Virement bancaire</option>
+                    <option value="MTN Mobile Money">MTN MoMo</option>
+                    <option value="Moov">Moov Money</option>
                   </select>
                 </div>
                 <div>
@@ -742,11 +807,12 @@ const RewardsPage = () => {
                   Aucun retrait effectué.
                 </p>
               ) : (
+                <>
                 <ul className="space-y-3">
-                  {withdrawals.map((w) => (
+                  {withdrawalPaginate.shown.map((w) => (
                     <li
                       key={w.id}
-                      className="rounded-xl border border-border p-3 text-sm"
+                      className="rounded-2xl border border-border p-3 text-sm"
                     >
                       <div className="flex items-center gap-3">
                         {statusIcon(w.status)}
@@ -776,6 +842,8 @@ const RewardsPage = () => {
                     </li>
                   ))}
                 </ul>
+                <ListFooter {...withdrawalPaginate} total={withdrawals.length} />
+                </>
               )}
             </div>
           </div>
@@ -815,14 +883,15 @@ const RewardsPage = () => {
                   Aucune transaction.
                 </p>
               ) : (
+                <>
                 <ul className="space-y-2">
-                  {ledgerWithBalance.map((l) => (
+                  {ledgerPaginate.shown.map((l) => (
                     <li
                       key={l.id}
-                      className="flex items-center gap-3 rounded-xl bg-muted/40 px-4 py-3 text-sm"
+                       className="flex items-center gap-3 rounded-2xl bg-muted/40 px-4 py-3 text-sm"
                     >
-                      <span
-                        className={`font-mono font-extrabold ${(l.amount || 0) > 0 ? "text-accent" : "text-destructive"}`}
+                       <span
+                         className={`font-mono font-extrabold ${(l.amount || 0) > 0 ? "text-accent" : "text-destructive"}`}
                       >
                         {(l.amount || 0) > 0 ? "+" : ""}
                         {(l.amount || 0).toLocaleString()}
@@ -839,6 +908,8 @@ const RewardsPage = () => {
                     </li>
                   ))}
                 </ul>
+                <ListFooter {...ledgerPaginate} total={ledgerWithBalance.length} />
+                </>
               )}
             </div>
             <div className={card}>
@@ -850,15 +921,16 @@ const RewardsPage = () => {
                   Aucune commande.
                 </p>
               ) : (
+                <>
                 <ul className="space-y-2">
-                  {gifts.map((g) => (
+                  {giftsPaginate.shown.map((g) => (
                     <li
                       key={g.id}
-                      className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
+                       className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm"
                     >
-                      {statusIcon(g.status)}
-                      <span className="flex-1 font-semibold capitalize">
-                        {g.gift_type?.replace(/_/g, " ")}
+                       {statusIcon(g.status)}
+                       <span className="flex-1 font-semibold capitalize">
+                         {g.gift_type?.replace(/_/g, " ")}
                       </span>
                       <span className="font-mono font-bold text-destructive">
                         -{(g.points_cost || 0).toLocaleString()} pts
@@ -869,6 +941,8 @@ const RewardsPage = () => {
                     </li>
                   ))}
                 </ul>
+                <ListFooter {...giftsPaginate} total={gifts.length} />
+                </>
               )}
             </div>
             <div className={card}>
@@ -878,15 +952,16 @@ const RewardsPage = () => {
                   Aucun service acheté.
                 </p>
               ) : (
+                <>
                 <ul className="space-y-2">
-                  {purchases.map((p) => {
+                  {purchasesPaginate.shown.map((p) => {
                     const svc = serviceByKey(p.service);
                     const active = isServiceActive(p);
                     const dl = daysLeft(p.expires_at);
                     return (
                       <li
                         key={p.id}
-                        className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
+                        className="flex items-center gap-3 rounded-2xl border border-border px-4 py-3 text-sm"
                       >
                         {statusIcon(active ? "active" : "expired")}
                         <span className="flex-1 font-semibold">
@@ -906,6 +981,8 @@ const RewardsPage = () => {
                     );
                   })}
                 </ul>
+                <ListFooter {...purchasesPaginate} total={purchases.length} />
+                </>
               )}
             </div>
           </div>
@@ -1031,6 +1108,12 @@ const RewardsPage = () => {
                       {maskPhone(confirm.payload.details)}
                     </span>
                   </div>
+                  {confirm.payload.name && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nom du compte</span>
+                      <span className="font-bold">{confirm.payload.name}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Solde après</span>
                     <span className="font-bold text-destructive">
@@ -1092,8 +1175,18 @@ const RewardsPage = () => {
             </div>
             <PaymentMethodPicker
               amount={fcfaCheckout.price}
-              onConfirm={buyServiceWithFcfa}
-              busy={busy}
+              onBeforePay={async () => {
+                if (!user) return;
+                await createPendingPayment({
+                  userId: user.id,
+                  type: "service",
+                  itemKey: fcfaCheckout.key,
+                  itemLabel: fcfaCheckout.label,
+                  amountFcfa: fcfaCheckout.price,
+                });
+              }}
+              type="service"
+              itemId={fcfaCheckout.key}
               ctaLabel="Payer le service"
             />
           </div>

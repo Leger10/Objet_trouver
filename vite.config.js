@@ -10,6 +10,9 @@ export default defineConfig({
     port: 5173,
     open: true,
     host: true,
+    headers: {
+      'Content-Security-Policy': "default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'self' 'unsafe-inline' 'unsafe-eval' https: http: localhost:* 127.0.0.1:*; style-src * 'self' 'unsafe-inline' https:; img-src * 'self' https: http: data: blob:; font-src * 'self' https: data:; connect-src * 'self' https: http: wss: ws:; frame-src * https: http:;",
+    },
   },
   resolve: {
     extensions: ['.jsx', '.js', '.json'],
@@ -31,5 +34,8 @@ export default defineConfig({
   },
   preview: {
     port: 4173,
+    headers: {
+      'Content-Security-Policy': "default-src 'self' https: http: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; style-src 'self' 'unsafe-inline' https:; img-src 'self' https: http: data: blob:; font-src 'self' https: data:; connect-src 'self' https: http: wss: ws:;",
+    },
   },
 });

@@ -1,4 +1,5 @@
 import { pb } from "@/lib/supabaseClient";
+import { onMatchFound } from "@/lib/notificationService";
 
 export const maskId = (last4) => (last4 ? `********${last4}` : "Non renseigné");
 
@@ -97,13 +98,15 @@ export const notify = async (
 // Cherche les correspondances pour une nouvelle déclaration et les enregistre
 export const runMatching = async (declaration) => {
   const opposite = declaration.kind === "lost" ? "found" : "lost";
-  const candidates = await pb.collection("declarations").getList(1, 200, {
-    filter: pb.filter(
-      'kind = {:k} && status != "returned" && status != "blocked"',
-      { k: opposite },
-    ),
-    sort: "-created",
-  });
+  let candidates;
+  try {
+    candidates = await pb.collection("declarations").getList(1, 200, {
+      filter: `kind = '${opposite}' AND status != 'returned' AND status != 'blocked'`,
+      sort: "-created",
+    });
+  } catch (_) {
+    return [];
+  }
 
   const created = [];
   for (const cand of candidates.items) {
@@ -120,7 +123,6 @@ export const runMatching = async (declaration) => {
           breakdown,
           status: "suggested",
         },
-        { requestKey: `match-${lost.id}-${found.id}` },
       );
       created.push({ ...rec, other: cand });
       await notify(
@@ -129,8 +131,10 @@ export const runMatching = async (declaration) => {
         `Une déclaration "${declaration.title}" pourrait correspondre à votre déclaration "${cand.title}".`,
         "/tableau-de-bord",
       );
+      // Notification push + email au propriétaire de la déclaration perdue
+      onMatchFound({ ...rec, score: total }, lost, found).catch(() => {});
     } catch (_) {
-      /* doublon ou refus de règle */
+      /* doublon ou table inexistante */
     }
   }
 

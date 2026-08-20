@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { CalendarDays, Flag, Lock, MapPin, ShieldCheck } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
@@ -7,6 +7,7 @@ import Layout from "@/components/Layout";
 import AdSlot from "@/components/AdSlot";
 import { useAuth } from "@/contexts/AuthContext";
 import { maskId, notify } from "@/lib/retrouve";
+import EtiquetteDecl from "@/components/EtiquetteDecl";
 
 const field =
   "w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30";
@@ -15,6 +16,7 @@ const DeclarationPage = () => {
   const { id } = useParams();
   const { user, isAuthed } = useAuth();
   const [item, setItem] = useState(null);
+  const [linkedPV, setLinkedPV] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [claim, setClaim] = useState({ answer: "", proof_note: "" });
@@ -24,7 +26,19 @@ const DeclarationPage = () => {
   useEffect(() => {
     pb.collection("declarations")
       .getOne(id, { expand: "category", requestKey: `decl-${id}` })
-      .then(setItem)
+      .then(async (decl) => {
+        setItem(decl);
+        if (decl.kind === "found") {
+          try {
+            const pvs = await pb.collection("pvs").getFullList({
+              filter: pb.filter('declaration_id = {:d} && type = "deposit"', { d: decl.id }),
+              sort: "-created",
+              requestKey: `decl-pv-${decl.id}`,
+            });
+            if (pvs.length > 0) setLinkedPV(pvs[0]);
+          } catch (_) {}
+        }
+      })
       .catch(() => setError("Déclaration introuvable ou retirée."))
       .finally(() => setLoading(false));
   }, [id]);
@@ -176,6 +190,12 @@ const DeclarationPage = () => {
             <p className="mt-6 whitespace-pre-line leading-relaxed">
               {item.description}
             </p>
+          )}
+
+          {linkedPV && item.kind === "found" && item.status !== "returned" && (
+            <div className="mt-6">
+              <EtiquetteDecl pv={linkedPV} />
+            </div>
           )}
 
           <p className="mt-6 flex items-start gap-2 rounded-2xl bg-secondary/50 p-4 text-sm">

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
   BadgeCheck,
   Bell,
+  ChevronRight,
   Copy,
   Coins,
   Gift,
@@ -15,8 +17,16 @@ import {
   ArrowDownToLine,
   History,
   Download,
+  FileText,
+  ChevronDown,
+  Target,
+  AlertTriangle,
+  CheckCircle2,
+  Package,
+  Star,
+  Banknote,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb, supabase } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import PullToRefresh from "@/components/PullToRefresh";
 import AdSlot from "@/components/AdSlot";
@@ -24,8 +34,88 @@ import { useAuth } from "@/contexts/AuthContext";
 import { REWARDS, BADGES, getBadge, notify } from "@/lib/retrouve";
 import { groupCategories, metaForSlug, groupStyle } from "@/lib/categories";
 import { printPV, TYPE_LABELS, TYPE_BADGE, formatDateTimeFr } from "@/lib/pv";
+import { usePaginate, ListFooter } from "@/components/PaginatedList";
+import EtiquetteDecl from "@/components/EtiquetteDecl";
 
-const card = "rounded-2xl border border-border bg-card p-5";
+const DECL_STATUS_LABELS = {
+  restitue: { label: "Objet restitué", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", dot: "bg-emerald-500" },
+  depose: { label: "Déposé", cls: "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400", dot: "bg-blue-500" },
+  open: { label: "En cours", cls: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400", dot: "bg-amber-500" },
+  closed: { label: "Fermé", cls: "bg-muted text-muted-foreground", dot: "bg-muted-foreground/50" },
+  matched: { label: "Match trouvé", cls: "bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400", dot: "bg-purple-500" },
+  returned: { label: "Restitué", cls: "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400", dot: "bg-emerald-500" },
+};
+
+const Section = ({ title, icon: Icon, count, children, defaultOpen = true }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-muted/50 transition-colors"
+      >
+        {Icon && <Icon className="h-5 w-5 text-primary shrink-0" />}
+        <span className="flex-1 text-sm font-extrabold">{title}</span>
+        {count > 0 && (
+          <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary/10 px-1.5 text-[10px] font-bold text-primary">
+            {count}
+          </span>
+        )}
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border/40 px-4 py-3">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const StatCard = ({ icon: Icon, value, label, color, gradient }) => (
+  <motion.div
+    whileTap={{ scale: 0.97 }}
+    className={`relative overflow-hidden rounded-2xl p-4 shadow-sm ${gradient || "bg-card border border-border/60"}`}
+  >
+    <div className="flex items-start justify-between">
+      <div>
+        <p className={`text-2xl font-extrabold ${color || "text-foreground"}`}>{value}</p>
+        <p className={`mt-0.5 text-[11px] font-semibold ${gradient ? "text-white/70" : "text-muted-foreground"}`}>
+          {label}
+        </p>
+      </div>
+      <div className={`grid h-9 w-9 place-items-center rounded-xl ${gradient ? "bg-white/15" : "bg-primary/10"}`}>
+        <Icon className={`h-4.5 w-4.5 ${gradient ? "text-white" : "text-primary"}`} />
+      </div>
+    </div>
+  </motion.div>
+);
+
+const QuickAction = ({ to, icon: Icon, label, sub, accent }) => (
+  <Link
+    to={to}
+    className={`flex items-center gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3.5 shadow-sm active:scale-[0.98] transition-all hover:shadow-md ${accent ? "border-primary/20 bg-primary/5" : ""}`}
+  >
+    <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${accent ? "bg-primary/15" : "bg-muted"}`}>
+      <Icon className={`h-5 w-5 ${accent ? "text-primary" : "text-muted-foreground"}`} />
+    </div>
+    <div className="min-w-0 flex-1">
+      <p className="text-sm font-bold">{label}</p>
+      <p className="text-[11px] text-muted-foreground">{sub}</p>
+    </div>
+    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+  </Link>
+);
 
 const DashboardPage = () => {
   const { user } = useAuth();
@@ -52,7 +142,6 @@ const DashboardPage = () => {
       const [
         decl,
         mts,
-        cin,
         cout,
         nt,
         refUsers,
@@ -70,12 +159,6 @@ const DashboardPage = () => {
           sort: "-score",
           expand: "lost,found",
           requestKey: "db-matches",
-        }),
-        pb.collection("claims").getFullList({
-          filter: pb.filter("declaration.owner = {:u}", { u: user.id }),
-          sort: "-created",
-          expand: "declaration,claimant",
-          requestKey: "db-claims-in",
         }),
         pb.collection("claims").getFullList({
           filter: pb.filter("claimant = {:u}", { u: user.id }),
@@ -96,13 +179,13 @@ const DashboardPage = () => {
             })
           : Promise.resolve({ totalItems: 0, items: [] }),
         pb.collection("points_ledger").getList(1, 200, {
-          filter: pb.filter('user = {:u} && reason = "referral"', {
+          filter: pb.filter('"user" = {:u} && reason = "referral"', {
             u: user.id,
           }),
           requestKey: "db-ref-ledger",
         }),
         pb.collection("points_ledger").getFullList({
-          filter: pb.filter("user = {:u}", { u: user.id }),
+          filter: pb.filter('"user" = {:u}', { u: user.id }),
           sort: "-created",
           requestKey: "db-ledger",
         }),
@@ -112,8 +195,34 @@ const DashboardPage = () => {
       ]);
       setDeclarations(decl);
       setMatches(mts);
-      setClaimsIn(cin);
       setClaimsOut(cout);
+
+      const declIds = (decl || []).map(d => d.id);
+      let claimsInItems = [];
+      if (declIds.length > 0) {
+        try {
+          const { data } = await supabase
+            .from('claims')
+            .select('*')
+            .in('declaration', declIds)
+            .order('created_at', { ascending: false });
+          claimsInItems = data || [];
+          if (claimsInItems.length > 0) {
+            const { data: decls } = await supabase
+              .from('declarations')
+              .select('*')
+              .in('id', declIds);
+            const declMap = new Map((decls || []).map(d => [d.id, d]));
+            claimsInItems.forEach(c => {
+              c.expand = { declaration: declMap.get(c.declaration) || null };
+            });
+          }
+        } catch (_) {
+          claimsInItems = [];
+        }
+      }
+      setClaimsIn(claimsInItems);
+
       setNotifs(nt.items);
       setReferralCount(refUsers.totalItems || 0);
       setReferralPoints(
@@ -186,9 +295,7 @@ const DashboardPage = () => {
       setNotifs((prev) =>
         prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)),
       );
-    } catch (_) {
-      /* ignore */
-    }
+    } catch (_) {}
   };
 
   const copyCode = () => {
@@ -211,7 +318,6 @@ const DashboardPage = () => {
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  // This-month points stats
   const monthStart = useMemo(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -231,7 +337,6 @@ const DashboardPage = () => {
     [ledger, monthStart],
   );
 
-  // Transaction history with running balance
   const filteredLedger = useMemo(() => {
     if (txFilter === "gains") return ledger.filter((l) => (l.amount || 0) > 0);
     if (txFilter === "depenses")
@@ -253,785 +358,399 @@ const DashboardPage = () => {
       .reverse();
   }, [filteredLedger]);
 
+  const filteredDecls = useMemo(() => {
+    return catFilter === "all" ? declarations : declarations.filter((d) => d.expand?.category?.id === catFilter);
+  }, [declarations, catFilter]);
+
+  const pvByDecl = useMemo(() => {
+    const map = new Map();
+    (pvs || []).forEach((p) => {
+      const declId = p.declaration_id || p.related_declaration;
+      if (declId) {
+        const existing = map.get(declId);
+        if (!existing || new Date(p.created) > new Date(existing.created)) {
+          map.set(declId, p);
+        }
+      }
+    });
+    return map;
+  }, [pvs]);
+
+  const matchesPaginate = usePaginate(matches);
+  const claimsInPaginate = usePaginate(claimsIn);
+  const filteredDeclPaginate = usePaginate(filteredDecls);
+  const ledgerPaginate = usePaginate(ledgerWithBalance);
+  const pvPaginate = usePaginate(pvs);
+  const referralPaginate = usePaginate(referrals);
+
+  const earned = user?.points_earned || 0;
+  const badge = getBadge(earned);
+  const nextBadge = BADGES.find((b) => earned < b.threshold);
+  const badgePct = nextBadge
+    ? Math.min(100, Math.round((earned / nextBadge.threshold) * 100))
+    : 100;
+
   return (
     <Layout>
       <Helmet>
         <title>Mon espace — RetrouveMoi</title>
-        <meta
-          name="description"
-          content="Suivez vos déclarations, correspondances, demandes de restitution, points et parrainages sur RetrouveMoi."
-        />
+        <meta name="description" content="Suivez vos déclarations, correspondances et récompenses." />
       </Helmet>
 
       <PullToRefresh onRefresh={load}>
-        <div className="mx-auto w-full max-w-[90rem] px-4 py-10">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold">
-            Bonjour {user?.name || user?.email}
-          </h1>
-          <p className="mt-2 text-sm sm:text-base text-muted-foreground">
-            Vos déclarations, correspondances et récompenses en un coup d'œil.
-          </p>
+        <div className="mx-auto w-full max-w-lg px-4 pt-5 pb-8 space-y-4">
 
-          <div className="mt-6 sm:mt-8 grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-            <div className={`${card} bg-primary text-primary-foreground`}>
-              <Coins className="h-5 w-5 sm:h-6 sm:w-6" />
-              <p className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-extrabold">
-                {user?.points || 0}
-              </p>
-              <p className="text-xs sm:text-sm opacity-85">points</p>
+          {/* ── HERO CARD ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-[hsl(200_85%_45%)] p-5 text-white shadow-lg shadow-primary/20"
+          >
+            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+            <div className="absolute -right-2 top-12 h-16 w-16 rounded-full bg-white/5" />
+            <p className="text-sm font-semibold text-white/70">
+              Bonjour {user?.name?.split(" ")[0] || user?.email?.split("@")[0]}
+            </p>
+            <div className="mt-3 flex items-end gap-3">
+              <p className="text-4xl font-extrabold tracking-tight">{user?.points || 0}</p>
+              <p className="mb-1 text-sm font-bold text-white/70">points</p>
             </div>
-            <div className={card}>
-              <ShieldCheck className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-              <p className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-extrabold">
-                {declarations.length}
-              </p>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                déclarations
-              </p>
-            </div>
-            <div className={card}>
-              <Handshake className="h-5 w-5 sm:h-6 sm:w-6 text-accent" />
-              <p className="mt-2 sm:mt-3 text-2xl sm:text-3xl font-extrabold">
-                {matches.length}
-              </p>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                correspondances
-              </p>
-            </div>
-            <div className={card}>
-              <Gift className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-              <p className="mt-2 text-xs sm:text-sm font-semibold text-muted-foreground">
-                Parrainages
-              </p>
-              <p className="mt-1 text-2xl sm:text-3xl font-extrabold">
-                {referralCount}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="font-bold text-primary">
-                  {referralPoints} pts
+            <div className="mt-3 flex items-center gap-3">
+              {badge && (
+                <span className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold">
+                  {badge.emoji} {badge.label}
                 </span>
-              </p>
-            </div>
-          </div>
-
-          {/* Mes points — this month + quick actions */}
-          <div className="mt-6 sm:mt-8 grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-            <div
-              className={`${card} bg-gradient-to-br from-primary to-[hsl(199_80%_42%)] text-primary-foreground`}
-            >
-              <p className="flex items-center gap-2 text-sm font-semibold opacity-85">
-                <Coins className="h-4 w-4" /> Mes points
-              </p>
-              <p className="mt-2 text-4xl font-extrabold">
-                {user?.points || 0}
-                <span className="text-lg font-bold opacity-80"> pts</span>
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-white/15 px-3 py-2">
-                  <p className="text-[11px] opacity-80">Gagnés ce mois</p>
-                  <p className="font-extrabold">
-                    +{monthEarned.toLocaleString()}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/15 px-3 py-2">
-                  <p className="text-[11px] opacity-80">Dépensés ce mois</p>
-                  <p className="font-extrabold">
-                    -{monthSpent.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              {(() => {
-                const earned = user?.points_earned || 0;
-                const b = getBadge(earned);
-                const next = BADGES.find((x) => earned < x.threshold);
-                const pct = next
-                  ? Math.min(100, Math.round((earned / next.threshold) * 100))
-                  : 100;
-                return (
-                  <div className="mt-4">
-                    {b && (
-                      <p className="text-sm font-bold">
-                        {b.emoji} {b.label}
-                      </p>
-                    )}
-                    {next && (
-                      <>
-                        <div className="mt-1.5 h-2 rounded-full bg-white/25 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-white"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] opacity-80">
-                          {earned} / {next.threshold} pts vers {next.label}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-            <div className={card}>
-              <p className="text-sm font-extrabold mb-3">Actions rapides</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Link
-                  to="/recompenses"
-                  className="flex flex-col items-start gap-2 rounded-xl bg-secondary/60 px-4 py-3.5 transition active:scale-[0.98] hover:bg-secondary"
-                >
-                  <ShoppingBag className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-bold">Utiliser mes points</span>
-                  <span className="text-xs text-muted-foreground">
-                    Boutique de services
-                  </span>
-                </Link>
-                <Link
-                  to="/recompenses"
-                  className="flex flex-col items-start gap-2 rounded-xl bg-muted px-4 py-3.5 transition active:scale-[0.98] hover:bg-muted/80"
-                >
-                  <ArrowDownToLine className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-bold">Retirer mes gains</span>
-                  <span className="text-xs text-muted-foreground">
-                    Convertir en FCFA
-                  </span>
-                </Link>
-                <Link
-                  to="/recompenses"
-                  className="flex flex-col items-start gap-2 rounded-xl bg-muted px-4 py-3.5 transition active:scale-[0.98] hover:bg-muted/80"
-                >
-                  <History className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-bold">Voir l'historique</span>
-                  <span className="text-xs text-muted-foreground">
-                    Toutes les transactions
-                  </span>
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Transaction history */}
-          <div className="mt-6">
-            <div className={card}>
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                <h2 className="text-lg font-extrabold">
-                  Historique des transactions
-                </h2>
-                <div className="flex flex-wrap gap-1">
-                  {[
-                    ["all", "Tout"],
-                    ["gains", "Gains"],
-                    ["depenses", "Dépenses"],
-                    ["retraits", "Retraits"],
-                  ].map(([k, label]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setTxFilter(k)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                        txFilter === k
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {ledgerWithBalance.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Aucune transaction pour le moment.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {ledgerWithBalance.slice(0, 12).map((l) => (
-                    <li
-                      key={l.id}
-                      className="flex items-center gap-3 rounded-xl bg-muted/40 px-4 py-3 text-sm"
-                    >
-                      <span
-                        className={`font-mono font-extrabold ${(l.amount || 0) > 0 ? "text-accent" : "text-destructive"}`}
-                      >
-                        {(l.amount || 0) > 0 ? "+" : ""}
-                        {(l.amount || 0).toLocaleString()}
-                      </span>
-                      <span className="flex-1 text-muted-foreground capitalize">
-                        {l.reason?.replace(/_/g, " ")}
-                      </span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        solde: {l.balanceAfter.toLocaleString()}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(l.created).toLocaleDateString("fr-FR")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
               )}
-              <Link
-                to="/recompenses"
-                className="mt-3 inline-block text-sm font-bold text-primary underline underline-offset-4"
-              >
-                Voir tout l'historique →
-              </Link>
+              {nextBadge && (
+                <span className="text-[11px] font-semibold text-white/60">
+                  {earned}/{nextBadge.threshold} pts
+                </span>
+              )}
             </div>
+            {nextBadge && (
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/20">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${badgePct}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  className="h-full rounded-full bg-white"
+                />
+              </div>
+            )}
+          </motion.div>
+
+          {/* ── STATS GRID ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon={ShieldCheck} value={declarations.length} label="Déclarations" gradient="bg-gradient-to-br from-blue-500 to-blue-600" color="text-white" />
+            <StatCard icon={Handshake} value={matches.length} label="Correspondances" gradient="bg-gradient-to-br from-amber-500 to-orange-500" color="text-white" />
+            <StatCard icon={FileText} value={pvs.length} label="PV établis" gradient="bg-gradient-to-br from-purple-500 to-purple-600" color="text-white" />
+            <StatCard icon={Gift} value={referralCount} label="Parrainages" gradient="bg-gradient-to-br from-emerald-500 to-emerald-600" color="text-white" />
           </div>
 
-          <div className="mt-8 sm:mt-10 grid gap-6 sm:gap-8 lg:grid-cols-[2fr_1fr]">
-            <div className="space-y-8">
-              <section>
-                <h2 className="text-xl font-extrabold">
-                  Correspondances à vérifier
-                </h2>
-                {loading && (
-                  <div className="mt-4 h-24 animate-pulse rounded-2xl bg-muted" />
-                )}
-                {!loading && matches.length === 0 && (
-                  <p className="mt-3 rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                    Aucune correspondance pour l'instant. Le moteur continue de
-                    comparer chaque nouvelle déclaration.
-                  </p>
-                )}
-                <ul className="mt-4 space-y-3">
-                  {matches.map((m) => (
-                    <li key={m.id} className={card}>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <span className="rounded-full bg-primary/10 px-3 py-1 font-mono text-sm font-bold text-primary">
-                          {m.score}%
-                        </span>
-                        <span className="text-sm font-semibold">
+          {/* ── QUICK ACTIONS ── */}
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.4 }}
+            className="space-y-2"
+          >
+            <QuickAction to="/declarer/perdu" icon={AlertTriangle} label="Déclarer un objet perdu" sub="Enregistrer une perte" accent />
+            <QuickAction to="/declarer/retrouvé" icon={Package} label="Déclarer un objet trouvé" sub="Aider quelqu'un à récupérer son bien" />
+            <QuickAction to="/rechercher" icon={Target} label="Rechercher un objet" sub="Parcourir les objets trouvés" />
+            <QuickAction to="/recompenses" icon={Banknote} label="Retirer mes gains" sub={`${(user?.points || 0).toLocaleString()} pts → FCFA`} />
+          </motion.div>
+
+          {/* ── CORRESPONDANCES ── */}
+          <Section title="Correspondances" icon={Handshake} count={matches.length} defaultOpen={matches.length > 0}>
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-16 animate-pulse rounded-2xl bg-muted" />
+                ))}
+              </div>
+            ) : matches.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                Aucune correspondance. Le moteur continue de comparer.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {matchesPaginate.shown.map((m) => (
+                  <motion.div
+                    key={m.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="rounded-2xl border border-border/60 bg-background p-3"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 font-mono text-sm font-extrabold text-primary">
+                        {m.score}%
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold">
                           {m.expand?.lost?.title} ↔ {m.expand?.found?.title}
-                        </span>
-                        <span className="ml-auto text-xs font-bold uppercase text-muted-foreground">
-                          {m.status}
-                        </span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground uppercase font-semibold">{m.status}</p>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {Object.entries(m.breakdown || {})
-                          .map(([k, v]) => `${k} ${v}`)
-                          .join(" · ")}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Link
-                          to={`/objet/${m.expand?.lost?.owner === user?.id ? m.found : m.lost}`}
-                          className="rounded-xl border border-border px-4 py-2 text-sm font-bold"
-                        >
-                          Voir la déclaration
-                        </Link>
-                        {m.status === "suggested" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => updateMatch(m, "confirmed")}
-                              className="rounded-xl bg-accent px-4 py-2 text-sm font-bold text-accent-foreground"
-                            >
-                              Confirmer (+50)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => updateMatch(m, "rejected")}
-                              className="rounded-xl border border-border px-4 py-2 text-sm font-bold"
-                            >
-                              Rejeter
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section>
-                <h2 className="text-xl font-extrabold">Demandes reçues</h2>
-                {claimsIn.length === 0 ? (
-                  <p className="mt-3 rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                    Aucune demande de restitution reçue.
-                  </p>
-                ) : (
-                  <ul className="mt-4 space-y-3">
-                    {claimsIn.map((c) => (
-                      <li key={c.id} className={card}>
-                        <p className="font-bold">
-                          {c.expand?.declaration?.title}
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Réponse à la question de sécurité :{" "}
-                          <span className="font-semibold text-foreground">
-                            {c.answer}
-                          </span>
-                        </p>
-                        {c.proof_note && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {c.proof_note}
-                          </p>
-                        )}
-                        <p className="mt-2 text-xs font-bold uppercase text-muted-foreground">
-                          Statut : {c.status}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {c.status === "pending" && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => updateClaim(c, "verified")}
-                                className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"
-                              >
-                                Réponse correcte
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => updateClaim(c, "rejected")}
-                                className="rounded-xl border border-border px-4 py-2 text-sm font-bold"
-                              >
-                                Refuser
-                              </button>
-                            </>
-                          )}
-                          {c.status === "verified" && (
-                            <button
-                              type="button"
-                              onClick={() => updateClaim(c, "returned")}
-                              className="rounded-xl bg-accent px-4 py-2 text-sm font-bold text-accent-foreground"
-                            >
-                              Restitution effectuée (+100)
-                            </button>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section>
-                <h2 className="text-xl font-extrabold">Mes déclarations</h2>
-
-                {declarations.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCatFilter("all")}
-                      className={`rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
-                        catFilter === "all"
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Tout ({declarations.length})
-                    </button>
-                    {(() => {
-                      const used = new Map();
-                      declarations.forEach((d) => {
-                        const cat = d.expand?.category;
-                        if (cat) used.set(cat.id, cat);
-                      });
-                      const grouped = groupCategories(
-                        Array.from(used.values()),
-                      );
-                      const chips = [];
-                      grouped.forEach((g) => {
-                        g.items.forEach((c) => {
-                          const n = declarations.filter(
-                            (d) => d.expand?.category?.id === c.id,
-                          ).length;
-                          if (n) chips.push({ c, n, group: g.key });
-                        });
-                      });
-                      return chips.map(({ c, n, group }) => {
-                        const meta = metaForSlug(c.slug);
-                        const st = groupStyle(group);
-                        return (
+                    </div>
+                    <div className="mt-2.5 flex gap-2">
+                      <Link
+                        to={`/objet/${m.expand?.lost?.owner === user?.id ? m.found : m.lost}`}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
+                      >
+                        Voir
+                      </Link>
+                      {m.status === "suggested" && (
+                        <>
                           <button
-                            key={c.id}
-                            type="button"
-                            onClick={() =>
-                              setCatFilter(catFilter === c.id ? "all" : c.id)
-                            }
-                            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
-                              catFilter === c.id ? st.active : st.tile
-                            }`}
+                            onClick={() => updateMatch(m, "confirmed")}
+                            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground"
                           >
-                            <span>{meta.emoji}</span>
-                            {c.name} ({n})
+                            Confirmer +50
                           </button>
-                        );
-                      });
-                    })()}
-                  </div>
-                )}
-
-                {(() => {
-                  const filtered =
-                    catFilter === "all"
-                      ? declarations
-                      : declarations.filter(
-                          (d) => d.expand?.category?.id === catFilter,
-                        );
-                  if (filtered.length === 0) {
-                    return (
-                      <p className="mt-4 rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                        {declarations.length === 0 ? (
-                          <>
-                            Aucune déclaration.{" "}
-                            <Link
-                              to="/declarer/perdu"
-                              className="font-bold text-primary"
-                            >
-                              Déclarer maintenant
-                            </Link>
-                          </>
-                        ) : (
-                          "Aucune déclaration dans cette catégorie."
-                        )}
-                      </p>
-                    );
-                  }
-                  // regroupe par catégorie
-                  const byCat = new Map();
-                  filtered.forEach((d) => {
-                    const key = d.expand?.category?.id || "none";
-                    if (!byCat.has(key))
-                      byCat.set(key, { cat: d.expand?.category, items: [] });
-                    byCat.get(key).items.push(d);
-                  });
-                  const groups = groupCategories(
-                    Array.from(byCat.values())
-                      .map((v) => v.cat)
-                      .filter(Boolean),
-                  );
-                  const ordered = [];
-                  groups.forEach((g) =>
-                    g.items.forEach((c) => {
-                      if (byCat.has(c.id))
-                        ordered.push({
-                          c,
-                          items: byCat.get(c.id).items,
-                          group: g.key,
-                        });
-                    }),
-                  );
-                  byCat.forEach((v, key) => {
-                    if (key === "none")
-                      ordered.push({
-                        c: null,
-                        items: v.items,
-                        group: "autres",
-                      });
-                  });
-
-                  return (
-                    <div className="mt-4 space-y-5">
-                      {ordered.map(({ c, items, group }) => {
-                        const meta = c
-                          ? metaForSlug(c.slug)
-                          : { emoji: "📦", label: "Autres" };
-                        const st = groupStyle(group);
-                        return (
-                          <div key={c?.id || "none"}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span
-                                className={`grid h-6 w-6 place-items-center rounded-lg ${st.soft} text-sm`}
-                              >
-                                {meta.emoji}
-                              </span>
-                              <span className="text-sm font-bold">
-                                {c?.name || "Autres"}
-                              </span>
-                              <span className="text-xs font-semibold text-muted-foreground">
-                                {items.length}
-                              </span>
-                            </div>
-                            <ul className="space-y-2">
-                              {items.map((d) => (
-                                <li
-                                  key={d.id}
-                                  className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3"
-                                >
-                                  <span
-                                    className={`h-2.5 w-2.5 rounded-full ${d.kind === "lost" ? "bg-destructive" : "bg-accent"}`}
-                                  />
-                                  <Link
-                                    to={`/objet/${d.id}`}
-                                    className="min-w-0 flex-1 truncate font-semibold"
-                                  >
-                                    {d.title}
-                                  </Link>
-                                  <span className="text-xs font-bold uppercase text-muted-foreground">
-                                    {d.status}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </section>
-
-              {referrals.length > 0 && (
-                <section>
-                  <h2 className="text-xl font-extrabold">Mes filleuls</h2>
-                  <ul className="mt-4 space-y-2">
-                    {referrals.map((r) => (
-                      <li
-                        key={r.id}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm"
-                      >
-                        <Users className="h-4 w-4 shrink-0 text-accent" />
-                        <span className="min-w-0 flex-1 truncate font-semibold">
-                          {r.name || r.email}
-                        </span>
-                        <span className="font-mono text-xs font-bold text-primary">
-                          +20 pts
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {claimsOut.length > 0 && (
-                <section>
-                  <h2 className="text-xl font-extrabold">
-                    Mes demandes envoyées
-                  </h2>
-                  <ul className="mt-4 space-y-2">
-                    {claimsOut.map((c) => (
-                      <li
-                        key={c.id}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm"
-                      >
-                        <span className="min-w-0 flex-1 truncate font-semibold">
-                          {c.expand?.declaration?.title}
-                        </span>
-                        <span className="text-xs font-bold uppercase text-muted-foreground">
-                          {c.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              <section>
-                <h2 className="text-xl font-extrabold">
-                  📑 Mes procès-verbaux
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Documents officiels liés à vos déclarations (dépôt ou
-                  restitution).
-                </p>
-                {pvs.length === 0 ? (
-                  <p className="mt-3 rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-                    Aucun procès-verbal pour le moment. Les PV sont établis par
-                    le responsable RetrouveMoi lors d'un dépôt ou d'une
-                    restitution.
-                  </p>
-                ) : (
-                  <ul className="mt-4 space-y-2">
-                    {pvs.map((p) => (
-                      <li
-                        key={p.id}
-                        className="rounded-xl border border-border bg-card px-4 py-3 text-sm"
-                      >
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${TYPE_BADGE[p.type] || "bg-muted text-muted-foreground"}`}
+                          <button
+                            onClick={() => updateMatch(m, "rejected")}
+                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground"
                           >
-                            {TYPE_LABELS[p.type] || p.type}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-semibold">
-                            {p.pv_number}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDateTimeFr(p.created)}
-                          </span>
-                        </div>
-                        {p.object_category && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Objet :{" "}
-                            <b className="text-foreground">
-                              {p.object_category}
-                            </b>
-                          </p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => printPV(p)}
-                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
-                        >
-                          <Download className="h-3.5 w-3.5" /> Télécharger /
-                          Imprimer
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </div>
-
-            <div className="space-y-4">
-              <AdSlot placement="dashboard" />
-              <div className={card}>
-                <p className="flex items-center gap-2 font-bold">
-                  <Bell className="h-5 w-5 text-primary" /> Notifications
-                </p>
-                <ul className="mt-3 space-y-2">
-                  {notifs.length === 0 && (
-                    <li className="text-sm text-muted-foreground">
-                      Aucune notification.
-                    </li>
-                  )}
-                  {notifs.map((n) => (
-                    <li
-                      key={n.id}
-                      className={`rounded-xl p-3 text-sm ${n.read ? "bg-muted/60" : "bg-secondary"}`}
-                    >
-                      <p className="font-bold">{n.title}</p>
-                      {n.body && (
-                        <p className="mt-1 text-muted-foreground">{n.body}</p>
+                            Rejeter
+                          </button>
+                        </>
                       )}
-                      {!n.read && (
-                        <button
-                          type="button"
-                          onClick={() => markRead(n)}
-                          className="mt-2 text-xs font-bold text-primary underline"
-                        >
-                          Marquer comme lue
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className={card}>
-                <p className="flex items-center gap-2 font-bold">
-                  <Gift className="h-5 w-5 text-primary" /> Mon code de
-                  parrainage
-                </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-base font-extrabold tracking-wider">
-                    {user?.referral_code || "—"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyCode}
-                    className="rounded-lg border border-border p-2.5 text-sm font-bold"
-                    aria-label="Copier le code"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                </div>
-                {copied && (
-                  <p className="mt-1 text-xs font-semibold text-accent">
-                    Code copié !
-                  </p>
-                )}
-                <p className="mt-3 text-xs text-muted-foreground font-semibold">
-                  Lien de parrainage
-                </p>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground font-mono">
-                    {referralLink || "—"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyLink}
-                    className="shrink-0 rounded-lg border border-border p-2.5"
-                    aria-label="Copier le lien"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                </div>
-                {copiedLink && (
-                  <p className="mt-1 text-xs font-semibold text-accent">
-                    Lien copié !
-                  </p>
-                )}
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Partagez ce lien : chaque ami inscrit vous rapporte{" "}
-                  <span className="font-bold text-primary">+20 points</span>.
-                  Vous avez parrainé{" "}
-                  <span className="font-bold">{referralCount}</span> personne
-                  {referralCount !== 1 ? "s" : ""}.
-                </p>
-              </div>
-
-              <div className={card}>
-                <p className="flex items-center gap-2 font-bold">
-                  <BadgeCheck className="h-5 w-5 text-accent" /> Statut &
-                  récompenses
-                </p>
-                {(() => {
-                  const earned = user?.points_earned || 0;
-                  const badge = getBadge(earned);
-                  const next = BADGES.find((b) => earned < b.threshold);
-                  const pct = next
-                    ? Math.min(100, Math.round((earned / next.threshold) * 100))
-                    : 100;
-                  return (
-                    <div className="mt-3">
-                      {badge && (
-                        <div className="flex items-center gap-2 rounded-xl bg-secondary px-3 py-2 mb-3">
-                          <span className="text-xl">{badge.emoji}</span>
-                          <span className="font-bold text-sm">
-                            {badge.label}
-                          </span>
-                        </div>
-                      )}
-                      {next && (
-                        <div className="mb-3">
-                          <p className="text-xs text-muted-foreground mb-1">
-                            Vers {next.emoji} {next.label}
-                          </p>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {earned} / {next.threshold} pts
-                          </p>
-                        </div>
-                      )}
-                      <Link
-                        to="/recompenses"
-                        className="block w-full rounded-xl bg-primary text-center text-sm font-bold text-primary-foreground py-2.5 mt-2"
-                      >
-                        Boutique de points
-                      </Link>
-                      <Link
-                        to="/classement"
-                        className="mt-2 inline-block text-sm font-bold text-primary underline underline-offset-4"
-                      >
-                        Voir le classement
-                      </Link>
                     </div>
-                  );
+                  </motion.div>
+                ))}
+                <ListFooter {...matchesPaginate} total={matches.length} />
+              </div>
+            )}
+          </Section>
+
+          {/* ── DEMANDES REÇUES ── */}
+          <Section title="Demandes reçues" icon={Users} count={claimsIn.length} defaultOpen={claimsIn.length > 0}>
+            {claimsIn.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">Aucune demande reçue.</p>
+            ) : (
+              <div className="space-y-2">
+                {claimsInPaginate.shown.map((c) => (
+                  <div key={c.id} className="rounded-2xl border border-border/60 bg-background p-3">
+                    <p className="text-sm font-bold">{c.expand?.declaration?.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Réponse : <span className="font-semibold text-foreground">{c.answer}</span>
+                    </p>
+                    <span className="mt-2 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                      {c.status}
+                    </span>
+                    <div className="mt-2.5 flex gap-2">
+                      {c.status === "pending" && (
+                        <>
+                          <button onClick={() => updateClaim(c, "verified")} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground">
+                            Accepter
+                          </button>
+                          <button onClick={() => updateClaim(c, "rejected")} className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold">
+                            Refuser
+                          </button>
+                        </>
+                      )}
+                      {c.status === "verified" && (
+                        <button onClick={() => updateClaim(c, "returned")} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground">
+                          Restituer +100
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <ListFooter {...claimsInPaginate} total={claimsIn.length} />
+              </div>
+            )}
+          </Section>
+
+          {/* ── MES DÉCLARATIONS ── */}
+          <Section title="Mes déclarations" icon={ShieldCheck} count={declarations.length}>
+            {declarations.length > 0 && (
+              <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+                <button
+                  onClick={() => setCatFilter("all")}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                    catFilter === "all"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  Tout ({declarations.length})
+                </button>
+                {(() => {
+                  const used = new Map();
+                  declarations.forEach((d) => {
+                    const cat = d.expand?.category;
+                    if (cat) used.set(cat.id, cat);
+                  });
+                  return Array.from(used.values()).map((cat) => {
+                    const meta = metaForSlug(cat.slug);
+                    const n = declarations.filter((d) => d.expand?.category?.id === cat.id).length;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setCatFilter(catFilter === cat.id ? "all" : cat.id)}
+                        className={`shrink-0 flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold transition active:scale-95 ${
+                          catFilter === cat.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {meta.emoji} ({n})
+                      </button>
+                    );
+                  });
                 })()}
               </div>
-              <div className={card}>
-                <p className="flex items-center gap-2 font-bold">
-                  <BadgeCheck className="h-5 w-5 text-accent" /> Barème des
-                  points
-                </p>
-                <ul className="mt-3 space-y-2 text-sm">
-                  {REWARDS.map((r) => (
-                    <li key={r.label} className="flex justify-between gap-3">
-                      <span className="text-muted-foreground">{r.label}</span>
-                      <span className="font-mono font-bold text-primary">
-                        {r.points}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+            )}
+
+            {filteredDeclPaginate.total === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                {declarations.length === 0 ? (
+                  <>Aucune déclaration. <Link to="/declarer/perdu" className="font-bold text-primary">Déclarer</Link></>
+                ) : "Aucune dans cette catégorie."}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {filteredDeclPaginate.shown.map((d) => {
+                  const statusInfo = DECL_STATUS_LABELS[d.status] || DECL_STATUS_LABELS.open;
+                  const linkedPV = pvByDecl.get(d.id);
+                  const showEtiquette = linkedPV && d.kind === "found" && d.status !== "returned";
+                  return (
+                    <div key={d.id}>
+                      <Link
+                        to={`/objet/${d.id}`}
+                        className="flex items-center gap-3 rounded-2xl bg-background border border-border/60 px-3 py-3 active:scale-[0.98] transition-all"
+                      >
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${d.kind === "lost" ? "bg-red-500" : "bg-emerald-500"}`} />
+                        <span className="min-w-0 flex-1 truncate text-sm font-bold">{d.title}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${statusInfo.cls}`}>
+                          {statusInfo.label}
+                        </span>
+                      </Link>
+                      {showEtiquette && <EtiquetteDecl pv={linkedPV} compact />}
+                    </div>
+                  );
+                })}
+                <ListFooter {...filteredDeclPaginate} total={filteredDecls.length} />
               </div>
+            )}
+          </Section>
+
+          {/* ── HISTORIQUE ── */}
+          <Section title="Historique des points" icon={Coins} count={ledgerWithBalance.length} defaultOpen={false}>
+            <div className="mb-2.5 flex gap-1">
+              {[
+                ["all", "Tout"],
+                ["gains", "+ Gains"],
+                ["depenses", "- Dépenses"],
+              ].map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setTxFilter(k)}
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition ${
+                    txFilter === k ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          </div>
+            {ledgerWithBalance.length === 0 ? (
+              <p className="py-3 text-center text-sm text-muted-foreground">Aucune transaction.</p>
+            ) : (
+              <div className="space-y-1">
+                {ledgerPaginate.shown.map((l) => (
+                  <div key={l.id} className="flex items-center gap-2 rounded-2xl bg-background px-3 py-2 text-sm">
+                    <span className={`font-mono text-xs font-extrabold ${(l.amount || 0) > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {(l.amount || 0) > 0 ? "+" : ""}{(l.amount || 0).toLocaleString()}
+                    </span>
+                    <span className="flex-1 truncate text-xs text-muted-foreground capitalize">
+                      {l.reason?.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {new Date(l.created).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+                    </span>
+                  </div>
+                ))}
+                <ListFooter {...ledgerPaginate} total={ledgerWithBalance.length} />
+              </div>
+            )}
+          </Section>
+
+          {/* ── PVs ── */}
+          {pvs.length > 0 && (
+            <Section title="Mes procès-verbaux" icon={FileText} count={pvs.length} defaultOpen={false}>
+              <div className="space-y-2">
+                {pvPaginate.shown.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-border/60 bg-background p-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${TYPE_BADGE[p.type] || "bg-muted text-muted-foreground"}`}>
+                        {TYPE_LABELS[p.type] || p.type}
+                      </span>
+                      <span className="text-xs font-bold">{p.pv_number}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {formatDateTimeFr(p.created)}
+                    </p>
+                    <button
+                      onClick={() => printPV(p)}
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold"
+                    >
+                      <Download className="h-3 w-3" /> Imprimer
+                    </button>
+                  </div>
+                ))}
+                <ListFooter {...pvPaginate} total={pvs.length} />
+              </div>
+            </Section>
+          )}
+
+          {/* ── PARRAINAGE ── */}
+          <Section title="Parrainage" icon={Gift} count={referralCount} defaultOpen={false}>
+            <div className="rounded-2xl bg-primary/5 p-3">
+              <div className="flex items-center gap-2">
+                <span className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-sm font-extrabold tracking-wider">
+                  {user?.referral_code || "—"}
+                </span>
+                <button
+                  onClick={copyCode}
+                  className="rounded-lg bg-primary p-2.5 text-white active:scale-95"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+              {copied && <p className="mt-1 text-xs font-bold text-accent">Copié !</p>}
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Partagez ce lien. Chaque inscription vous rapporte <span className="font-bold text-primary">+20 points</span>.
+              </p>
+            </div>
+            {referrals.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {referralPaginate.shown.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 rounded-2xl bg-background px-3 py-2">
+                    <Users className="h-3.5 w-3.5 shrink-0 text-accent" />
+                    <span className="flex-1 truncate text-xs font-semibold">{r.name || r.email}</span>
+                    <span className="text-[10px] font-bold text-primary">+20 pts</span>
+                  </div>
+                ))}
+                <ListFooter {...referralPaginate} total={referrals.length} />
+              </div>
+            )}
+          </Section>
+
+          {/* ── BARÈME ── */}
+          <Section title="Barème des points" icon={Star} defaultOpen={false}>
+            <div className="space-y-1.5">
+              {REWARDS.map((r) => (
+                <div key={r.label} className="flex items-center justify-between rounded-2xl bg-background px-3 py-2">
+                  <span className="text-xs text-muted-foreground">{r.label}</span>
+                  <span className="font-mono text-xs font-bold text-primary">{r.points}</span>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* ── AD ── */}
+          <AdSlot placement="dashboard" />
         </div>
       </PullToRefresh>
     </Layout>

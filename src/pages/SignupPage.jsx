@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Helmet } from 'react-helmet';
+import { Helmet } from 'react-helmet-async';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, Gift, Star, Users } from 'lucide-react';
+import { Loader2, Gift, Star, Users, MailCheck } from 'lucide-react';
 import Layout from '@/components/Layout';
 import BrandLogo from '@/components/BrandLogo';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +24,7 @@ const SignupPage = () => {
     const [form, setForm] = useState({ name: '', email: '', phone: '', city: '', password: '', referred_by: '' });
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    const [confirmationSent, setConfirmationSent] = useState(false);
 
     useEffect(() => {
         const ref = searchParams.get('ref');
@@ -41,13 +42,17 @@ const SignupPage = () => {
         }
         setBusy(true);
         try {
-            await signup(form.email, form.password, {
+            const result = await signup(form.email, form.password, {
                 name: form.name,
                 phone: form.phone,
                 city: form.city,
                 referred_by: form.referred_by.trim().toUpperCase(),
             });
-            navigate('/tableau-de-bord');
+            if (result?.needsConfirmation) {
+                setConfirmationSent(true);
+            } else {
+                navigate('/tableau-de-bord');
+            }
         } catch (err) {
             setError(err?.message || "L'inscription a échoué. Vérifiez vos informations.");
         } finally {
@@ -72,10 +77,28 @@ const SignupPage = () => {
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{branding.tagline}</p>
                             </div>
                         </div>
-                        <h1 className="text-2xl sm:text-3xl font-extrabold">Créer mon compte</h1>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            Gratuit, sans publicité intrusive. Vos coordonnées restent privées.
-                        </p>
+                        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-lg">
+                            {confirmationSent ? (
+                                <div className="text-center py-8">
+                                    <MailCheck className="mx-auto h-16 w-16 text-green-600 dark:text-green-400" />
+                                    <h2 className="mt-4 text-2xl font-extrabold">Vérifiez votre email</h2>
+                                    <p className="mt-3 text-sm text-muted-foreground max-w-sm mx-auto">
+                                        Un lien de confirmation a été envoyé à <span className="font-bold">{form.email}</span>.
+                                        Cliquez sur le lien dans l&apos;email pour activer votre compte, puis connectez-vous.
+                                    </p>
+                                    <Link
+                                        to="/connexion"
+                                        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-extrabold text-primary-foreground"
+                                    >
+                                        Aller à la connexion
+                                    </Link>
+                                </div>
+                            ) : (
+                            <>
+                            <h1 className="text-2xl font-extrabold">Créer mon compte</h1>
+                            <p className="mt-1.5 text-sm text-muted-foreground">
+                                Gratuit. Vos coordonnées restent privées.
+                            </p>
 
                         {form.referred_by && (
                             <div className="mt-4 flex items-start gap-3 rounded-xl border border-accent/30 bg-secondary px-4 py-3">
@@ -120,12 +143,15 @@ const SignupPage = () => {
                                 <span className="text-xs font-normal text-muted-foreground">Vous recevrez automatiquement votre propre code dès votre inscription.</span>
                             </label>
                             {error && <p className="rounded-xl bg-destructive/10 px-4 py-3 text-sm font-semibold text-destructive">{error}</p>}
-                            <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-extrabold text-primary-foreground disabled:opacity-60 text-base min-h-[56px]">
+                            <button type="submit" disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-4 font-extrabold text-primary-foreground shadow-lg shadow-primary/25 disabled:opacity-60 text-base min-h-[52px] transition-transform active:scale-[0.98]">
                                 {busy && <Loader2 className="h-5 w-5 animate-spin" />}
                                 Créer mon compte gratuitement
                             </button>
                         </form>
-                        <p className="mt-5 sm:mt-6 text-sm text-muted-foreground text-center sm:text-left">
+                        </>
+                            )}
+                        </div>
+                        <p className="mt-5 text-sm text-muted-foreground text-center sm:text-left">
                             Déjà membre ?{' '}
                             <Link to="/connexion" className="font-bold text-primary underline underline-offset-4">
                                 Se connecter
@@ -135,7 +161,7 @@ const SignupPage = () => {
 
                     {/* Right — benefits */}
                     <div className="space-y-4">
-                        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+                        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-sm">
                             <p className="flex items-center gap-2 font-extrabold">
                                 <Star className="h-5 w-5 text-primary" />
                                 Comment gagner des points
@@ -152,7 +178,7 @@ const SignupPage = () => {
                             </ul>
                         </div>
 
-                        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+                        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-sm">
                             <p className="flex items-center gap-2 font-extrabold">
                                 <Users className="h-5 w-5 text-accent" />
                                 Votre code de parrainage

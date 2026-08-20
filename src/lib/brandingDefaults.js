@@ -5,6 +5,9 @@
 export const LOGO_URL =
     'https://horizons-cdn.hostinger.com/e776e53a-2e8c-4679-82db-bb8e8b1bc86d/1ba5c4215809aaa0ea7d6e0cce3932d3.png';
 
+export const DEFAULT_HERO =
+    'https://images.hostinger.com/1d7b56f8-ae12-42ac-9369-50d15f8f42a1.png';
+
 export const BRANDING_DEFAULTS = {
     app_name: 'RetrouveMoi',
     logo_url: LOGO_URL,
@@ -26,6 +29,11 @@ export const BRANDING_DEFAULTS = {
     social_whatsapp: '',
     currency: 'FCFA',
     language: 'fr',
+    hero_image_url: DEFAULT_HERO,
+    hero_link: '',
+    sponsor_name: '',
+    sponsor_url: '',
+    sponsor_tagline: '',
 };
 
 /**

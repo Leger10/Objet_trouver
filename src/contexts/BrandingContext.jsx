@@ -8,7 +8,7 @@ import React, {
   useState,
 } from "react";
 import { pb } from "@/lib/supabaseClient";
-import { BRANDING_DEFAULTS, applyBrandingCss } from "@/lib/brandingDefaults";
+import { BRANDING_DEFAULTS, DEFAULT_HERO, applyBrandingCss } from "@/lib/brandingDefaults";
 
 const BrandingContext = createContext(null);
 
@@ -41,6 +41,11 @@ const mergeRecord = (rec) => {
     social_whatsapp: rec.social_whatsapp || "",
     currency: rec.currency || BRANDING_DEFAULTS.currency,
     language: rec.language || BRANDING_DEFAULTS.language,
+    hero_image_url: pb.files.getBrandingUrl(rec, 'hero_file') || rec.hero_image_url || DEFAULT_HERO,
+    hero_link: rec.hero_link || "",
+    sponsor_name: rec.sponsor_name || "",
+    sponsor_url: rec.sponsor_url || "",
+    sponsor_tagline: rec.sponsor_tagline || "",
     _raw: rec,
   };
 };
@@ -53,7 +58,7 @@ export const BrandingProvider = ({ children }) => {
     try {
       const rec = await pb
         .collection("branding_settings")
-        .getFirstListItem("key = 'main'", { requestKey: "branding-main" });
+        .getFirstListItem("id = 'default'", { requestKey: "branding-main" });
       
       const merged = mergeRecord(rec);
       setBranding(merged);

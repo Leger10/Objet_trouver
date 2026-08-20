@@ -8,7 +8,7 @@ export const getBrandingForPV = async () => {
   try {
     const rec = await pb
       .collection("branding_settings")
-      .getFirstListItem("key = 'main'", { requestKey: "pv-branding" });
+      .getFirstListItem("id = 'default'", { requestKey: "pv-branding" });
     const logoFile = rec.logo_file ? pb.files.getURL(rec, rec.logo_file) : "";
     cachedBranding = {
       ...BRANDING_DEFAULTS,
@@ -82,8 +82,10 @@ export const savePV = async ({
   data,
   relatedDeclaration = null,
   generatedBy,
+  generatedByName = "",
 }) => {
   const pvNumber = generatePVNumber(type);
+  const enrichedData = { ...data, adminName: generatedByName || data?.adminName || "" };
   const payload = {
     pv_number: pvNumber,
     type,
@@ -96,7 +98,7 @@ export const savePV = async ({
     object_category: data.objectCategory || "",
     object_description: data.objectDescription || "",
     location: data.location || "Locaux RetrouveMoi",
-    data,
+    data: enrichedData,
   };
   const rec = await pb
     .collection("pvs")
@@ -163,6 +165,18 @@ export const buildPVHtml = (pv, branding = BRANDING_DEFAULTS) => {
           ${verifRow("Le propriétaire a présenté une copie de la déclaration de perte", d.conformLossDeclaration)}
           ${verifRow("Le propriétaire a présenté une pièce d'identité", d.conformId)}
         </table>`;
+
+  const adminName = d.adminName || "";
+  const adminBlock = isDeposit && (adminName || pv.location) ? `
+        <h3>Informations de retrait pour le propriétaire</h3>
+        <div style="background: #e8f4fd; border: 2px solid #3b82f6; border-radius: 10px; padding: 14px 16px; margin: 14px 0;">
+          ${adminName ? `<p style="margin: 4px 0; font-size: 12.5px;"><b>Administrateur responsable :</b> ${adminName}</p>` : ""}
+          ${pv.location ? `<p style="margin: 4px 0; font-size: 12.5px;"><b>Lieu de dépôt :</b> ${pv.location}</p>` : ""}
+          <p style="margin: 8px 0 0; font-size: 11.5px; color: #1e40af; font-weight: 700;">
+            Le propriétaire doit se présenter sur ce lieu avec une pièce d'identité pour récupérer son objet.
+          </p>
+        </div>`
+    : "";
 
   const declaration = isDeposit
     ? `Je certifie par la présente avoir trouvé l'objet décrit ci-dessus et le déposer auprès de ${brandName} pour le restituer à son propriétaire.`
@@ -234,6 +248,8 @@ export const buildPVHtml = (pv, branding = BRANDING_DEFAULTS) => {
     <table class="info">${objectRows}</table>
 
     ${verifBlock}
+
+    ${adminBlock}
 
     <div class="declaration">${declaration}</div>
 

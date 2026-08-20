@@ -10,9 +10,9 @@ const logAdEvent = (type, placement) => {
     pb.collection("ad_events")
       .create(
         {
-          type,
+          action: type,
           placement,
-          user: user?.id || null,
+          "user": user?.id || null,
         },
         { requestKey: `ad-${type}-${placement}-${Date.now()}` },
       )

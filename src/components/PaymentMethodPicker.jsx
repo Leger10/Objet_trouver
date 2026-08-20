@@ -1,168 +1,159 @@
-import React, { useState } from 'react';
-import { toast } from 'sonner';
-import { Check, Copy, CreditCard, Lock, Phone, Smartphone } from 'lucide-react';
-import {
-    PAYMENT_METHODS,
-    methodByKey,
-    ussdCode,
-    transferNumber,
-    copyToClipboard,
-} from '@/lib/payments';
-import { formatNumber } from '@/lib/format';
+import React, { useState } from "react";
+import { toast } from "sonner";
+import { Lock, Loader2, Smartphone, User, Phone } from "lucide-react";
+import { initPayment, computeTotalWithFee, computeFee } from "@/lib/moneyfusion";
+import { formatNumber } from "@/lib/format";
 
 const field =
-    'w-full rounded-xl border border-input bg-background px-4 py-3.5 text-base outline-none focus:border-primary focus:ring-2 focus:ring-ring/30';
+  "w-full rounded-xl border border-input bg-background px-4 py-3.5 text-base outline-none focus:border-primary focus:ring-2 focus:ring-ring/30";
 
 /**
- * Reusable payment method picker + dynamic instructions.
+ * MoneyFusion payment button — collects phone + name, then redirects to checkout.
  * Props:
- *  - amount: number (FCFA)
- *  - onConfirm: async (methodKey, paymentRef) => void  (called when user confirms)
- *  - busy: boolean
+ *  - amount: number (FCFA, before fees)
+ *  - onBeforePay: async () => void  (optional — e.g. create DB record before redirect)
+ *  - type: string (payment type for MoneyFusion personal_Info)
+ *  - itemId: string (related record ID)
+ *  - items: array (custom article list, default: [{ paiement: amount }])
+ *  - extraInfo: object (additional personal_Info fields)
  *  - ctaLabel: string
+ *  - disabled: boolean
  */
-const PaymentMethodPicker = ({ amount = 0, onConfirm, busy = false, ctaLabel = 'Confirmer le paiement' }) => {
-    const [method, setMethod] = useState('orange_money');
-    const [ref, setRef] = useState('');
-    const active = methodByKey(method);
+const PaymentMethodPicker = ({
+  amount = 0,
+  onBeforePay,
+  type = "paiement",
+  itemId = "",
+  items,
+  extraInfo = {},
+  ctaLabel = "Payer",
+  disabled = false,
+}) => {
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
 
-    const handleCopy = async (text, label) => {
-        const ok = await copyToClipboard(text, label);
-        if (ok) toast.success(`${label} copié !`);
-        else toast.error('Copie impossible, saisissez-le manuellement.');
-    };
+  const totalWithFee = computeTotalWithFee(amount);
+  const fee = computeFee(amount);
 
-    return (
-        <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-sm font-bold">Méthode de paiement</p>
-            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                {PAYMENT_METHODS.map((m) => {
-                    const isActive = method === m.key;
-                    return (
-                        <button
-                            key={m.key}
-                            type="button"
-                            onClick={() => setMethod(m.key)}
-                            className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3.5 text-left transition-all active:scale-[0.97] ${
-                                isActive ? `${m.ring} ${m.soft}` : 'border-border bg-background'
-                            }`}
-                        >
-                            <span
-                                className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${m.color} text-white shadow-sm`}
-                            >
-                                <Smartphone className="h-5 w-5" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-extrabold">{m.label}</span>
-                                <span className="block text-[11px] text-muted-foreground">{m.hint}</span>
-                            </span>
-                            {isActive && <Check className={`h-5 w-5 ${m.text}`} />}
-                        </button>
-                    );
-                })}
-            </div>
+  const handlePay = async () => {
+    if (!phone.trim() || phone.trim().length < 8) {
+      toast.error("Numéro de téléphone invalide (8 chiffres minimum).");
+      return;
+    }
+    if (!name.trim()) {
+      toast.error("Indiquez votre nom.");
+      return;
+    }
+    if (amount < 100) {
+      toast.error("Montant minimum : 100 FCFA.");
+      return;
+    }
 
-            {/* Dynamic instructions */}
-            <div className={`mt-4 rounded-2xl border-2 ${active.ring} ${active.soft} p-4`}>
-                {active.type === 'ussd' && (
-                    <div>
-                        <p className={`text-sm font-extrabold ${active.text}`}>Orange Money — Code USSD</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Composez le code ci-dessous. Le montant{' '}
-                            <span className="font-bold text-foreground">{formatNumber(amount)} FCFA</span> est inclus.
-                        </p>
-                        <div className="mt-3 flex items-stretch gap-2">
-                            <code className="flex-1 truncate rounded-xl bg-background px-3 py-3 text-sm font-bold tracking-wide shadow-inner">
-                                {ussdCode(amount)}
-                            </code>
-                            <button
-                                type="button"
-                                onClick={() => handleCopy(ussdCode(amount), 'Le code USSD')}
-                                className={`flex shrink-0 items-center gap-1.5 rounded-xl ${active.chip} px-4 py-3 text-sm font-bold text-white active:scale-95`}
-                            >
-                                <Copy className="h-4 w-4" /> Copier
-                            </button>
-                        </div>
-                        <ol className="mt-3 space-y-1 text-xs text-muted-foreground">
-                            <li>1. Copiez le code USSD et appelez-le depuis votre clavier.</li>
-                            <li>2. Validez avec votre code secret Orange Money.</li>
-                            <li>3. Conservez la référence reçue par SMS.</li>
-                        </ol>
-                    </div>
-                )}
-                {active.type === 'phone' && (
-                    <div>
-                        <p className={`text-sm font-extrabold ${active.text}`}>{active.label} — Numéro de transfert</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Envoyez <span className="font-bold text-foreground">{formatNumber(amount)} FCFA</span> vers le numéro ci-dessous.
-                        </p>
-                        <div className="mt-3 flex items-stretch gap-2">
-                            <code className="flex-1 truncate rounded-xl bg-background px-3 py-3 text-sm font-bold tracking-wide shadow-inner">
-                                {transferNumber(active.key)}
-                            </code>
-                            <button
-                                type="button"
-                                onClick={() => handleCopy(transferNumber(active.key), 'Le numéro')}
-                                className={`flex shrink-0 items-center gap-1.5 rounded-xl ${active.chip} px-4 py-3 text-sm font-bold text-white active:scale-95`}
-                            >
-                                <Copy className="h-4 w-4" /> Copier
-                            </button>
-                            <a
-                                href={`tel:${transferNumber(active.key).replace(/\s/g, '')}`}
-                                className={`flex shrink-0 items-center gap-1.5 rounded-xl border-2 ${active.ring} px-4 py-3 text-sm font-bold active:scale-95`}
-                            >
-                                <Phone className="h-4 w-4" /> Appeler
-                            </a>
-                        </div>
-                        <ol className="mt-3 space-y-1 text-xs text-muted-foreground">
-                            <li>1. Envoyez le montant vers le numéro ci-dessus.</li>
-                            <li>2. Conservez la référence de transaction reçue par SMS.</li>
-                        </ol>
-                    </div>
-                )}
-                {active.type === 'card' && (
-                    <div>
-                        <p className={`text-sm font-extrabold ${active.text}`}>Paiement par carte (simulation)</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                            Saisissez une référence de transaction simulée pour valider. Aucun vrai numéro de carte n'est demandé.
-                        </p>
-                        <div className="mt-3 flex items-center gap-2 rounded-xl bg-background px-3 py-3 text-sm">
-                            <CreditCard className="h-5 w-5 text-muted-foreground" />
-                            <span className="text-muted-foreground">Paiement sécurisé · Visa / Mastercard</span>
-                        </div>
-                    </div>
-                )}
-            </div>
+    setBusy(true);
+    try {
+      // Optional pre-hook (e.g. create pending DB record)
+      if (onBeforePay) {
+        await onBeforePay();
+      }
 
-            {/* Transaction reference */}
-            <div className="mt-4">
-                <label className="text-xs font-bold text-muted-foreground">Référence de transaction (SMS / reçu)</label>
-                <input
-                    type="text"
-                    value={ref}
-                    onChange={(e) => setRef(e.target.value)}
-                    placeholder="ex : OM123456789 ou TR-98765"
-                    className={`mt-1.5 ${field}`}
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                    Indiquez la référence reçue après votre paiement pour accélérer la validation.
-                </p>
-            </div>
+      const result = await initPayment({
+        amount,
+        items: items || [{ [type]: amount }],
+        phone: phone.trim(),
+        name: name.trim(),
+        type,
+        itemId,
+        extraInfo,
+      });
 
-            <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Lock className="h-3.5 w-3.5" /> Aucun numéro de carte n'est stocké. Validation manuelle sous 24h.
-            </p>
+      if (result.url) {
+        window.location.href = result.url;
+      }
+    } catch (err) {
+      toast.error(err?.message || "Erreur lors de l'initialisation du paiement.");
+      setBusy(false);
+    }
+  };
 
-            <button
-                type="button"
-                disabled={busy}
-                onClick={() => onConfirm(method, ref.trim())}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-4 text-base font-extrabold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-60"
-            >
-                {busy ? 'Traitement…' : `${ctaLabel} · ${formatNumber(amount)} FCFA`}
-            </button>
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      {/* Fee disclosure */}
+      <div className="mb-4 rounded-xl bg-secondary/60 px-4 py-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Montant</span>
+          <span className="font-bold">{formatNumber(amount)} FCFA</span>
         </div>
-    );
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Frais de service (3%)</span>
+          <span className="font-bold text-muted-foreground">
+            +{formatNumber(fee)} FCFA
+          </span>
+        </div>
+        <div className="flex justify-between border-t border-border pt-1 mt-1">
+          <span className="font-semibold">Total à payer</span>
+          <span className="font-extrabold text-primary">
+            {formatNumber(totalWithFee)} FCFA
+          </span>
+        </div>
+      </div>
+
+      {/* Phone number */}
+      <div className="mb-3">
+        <label className="text-xs font-bold text-muted-foreground">
+          Numéro de téléphone (pour le paiement)
+        </label>
+        <div className="relative mt-1.5">
+          <Smartphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Ex: 0701234567"
+            className={`${field} pl-10`}
+          />
+        </div>
+      </div>
+
+      {/* Name */}
+      <div className="mb-4">
+        <label className="text-xs font-bold text-muted-foreground">
+          Nom complet
+        </label>
+        <div className="relative mt-1.5">
+          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Votre nom"
+            className={`${field} pl-10`}
+          />
+        </div>
+      </div>
+
+      <p className="mb-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Lock className="h-3.5 w-3.5" /> Paiement sécurisé via MoneyFusion
+        (Orange Money, Wave, MTN, Moov, Carte).
+      </p>
+
+      <button
+        type="button"
+        disabled={disabled || busy || amount < 100}
+        onClick={handlePay}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-4 text-base font-extrabold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-60"
+      >
+        {busy ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <>
+            {ctaLabel} · {formatNumber(totalWithFee)} FCFA
+          </>
+        )}
+      </button>
+    </div>
+  );
 };
 
 export default PaymentMethodPicker;

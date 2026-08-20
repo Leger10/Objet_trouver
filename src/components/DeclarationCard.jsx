@@ -14,7 +14,7 @@ const DeclarationCard = ({ item }) => {
   return (
     <Link
       to={`/objet/${item.id}`}
-      className="group flex gap-4 rounded-2xl border border-border bg-card p-4 transition-transform hover:-translate-y-0.5 rt-shadow"
+      className="group flex gap-4 rounded-2xl border border-border bg-card p-4 transition-all hover:shadow-md active:scale-[0.98] shadow-sm"
     >
       <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl bg-muted text-2xl">
         {photo ? (

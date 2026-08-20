@@ -19,10 +19,104 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // ADAPTATEUR POCKETBASE → SUPABASE
 // ============================================================
 
+const EXPAND_MAP = {
+  claims: {
+    declaration: { column: 'declaration', table: 'declarations' },
+    claimant: { column: 'claimant', table: 'users' },
+  },
+  matches: {
+    lost: { column: 'lost', table: 'declarations' },
+    found: { column: 'found', table: 'declarations' },
+  },
+  reports: {
+    declaration: { column: 'declaration', table: 'declarations' },
+    reporter: { column: 'reporter', table: 'users' },
+  },
+  declarations: {
+    owner: { column: 'owner', table: 'users' },
+    category: { column: 'category', table: 'categories', keyColumn: 'slug' },
+  },
+  withdrawals: {
+    user: { column: 'user', table: 'users' },
+  },
+  payments: {
+    user: { column: 'user', table: 'users' },
+  },
+  subscriptions: {
+    user: { column: 'user', table: 'users' },
+  },
+  pro_accounts: {
+    user: { column: 'user', table: 'users' },
+    owner: { column: 'user', table: 'users' },
+  },
+  pvs: {
+    user: { column: 'user', table: 'users' },
+    generated_by: { column: 'user', table: 'users' },
+    related_declaration: { column: 'declaration_id', table: 'declarations' },
+    declaration_id: { column: 'declaration_id', table: 'declarations' },
+  },
+  notifications: {
+    user: { column: 'user', table: 'users' },
+  },
+  point_purchases: {
+    user: { column: 'user', table: 'users' },
+  },
+  gift_orders: {
+    user: { column: 'user', table: 'users' },
+  },
+};
+
 class SupabaseCollection {
   constructor(collectionName, supabaseClient) {
     this.collectionName = collectionName;
     this.supabase = supabaseClient;
+  }
+
+  async _expandData(items, expandStr) {
+    if (!items?.length || !expandStr) return items;
+    const names = expandStr.split(',').map(s => s.trim()).filter(Boolean);
+    const config = EXPAND_MAP[this.collectionName];
+    if (!config) return items;
+
+    const fetches = [];
+    for (const name of names) {
+      const cfg = config[name];
+      if (!cfg) continue;
+      const keyCol = cfg.keyColumn || 'id';
+      const values = [...new Set(items.map(i => i[cfg.column]).filter(Boolean))];
+      if (values.length === 0) {
+        items.forEach(i => { i.expand = i.expand || {}; i.expand[name] = null; });
+        continue;
+      }
+      fetches.push(
+        this.supabase
+          .from(cfg.table)
+          .select('*')
+          .in(keyCol, values)
+          .then(({ data }) => {
+            const map = new Map((data || []).map(r => [r[keyCol], r]));
+            items.forEach(i => {
+              i.expand = i.expand || {};
+              i.expand[name] = map.get(i[cfg.column]) || null;
+            });
+          })
+      );
+    }
+    await Promise.all(fetches);
+    return items;
+  }
+
+  _applySort(query, sort) {
+    if (!sort) return query;
+    const fields = sort.split(',').map(s => s.trim()).filter(Boolean);
+    for (const field of fields) {
+      const isDesc = field.startsWith('-');
+      let cleanField = isDesc ? field.slice(1) : field;
+      if (cleanField === 'created') cleanField = 'created_at';
+      if (cleanField === 'updated') cleanField = 'updated_at';
+      query = query.order(cleanField, { ascending: !isDesc });
+    }
+    return query;
   }
 
   async getList(page = 1, perPage = 50, options = {}) {
@@ -41,21 +135,22 @@ class SupabaseCollection {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
         if (cond.field && cond.operator && cond.value) {
+          const field = cond.quoted ? `"${cond.field}"` : cond.field;
           switch (cond.operator) {
             case '=':
-              query = query.eq(cond.field, cond.value);
+              query = query.eq(field, cond.value);
               break;
             case '~':
-              query = query.ilike(cond.field, `%${cond.value}%`);
+              query = query.ilike(field, `%${cond.value}%`);
               break;
             case '>=':
-              query = query.gte(cond.field, cond.value);
+              query = query.gte(field, cond.value);
               break;
             case '<=':
-              query = query.lte(cond.field, cond.value);
+              query = query.lte(field, cond.value);
               break;
             case '!=':
-              query = query.neq(cond.field, cond.value);
+              query = query.neq(field, cond.value);
               break;
             default:
               break;
@@ -65,11 +160,7 @@ class SupabaseCollection {
     }
 
     // Tri
-    if (sort) {
-      const isDesc = sort.startsWith('-');
-      const cleanField = isDesc ? sort.slice(1) : sort;
-      query = query.order(cleanField, { ascending: !isDesc });
-    }
+    query = this._applySort(query, sort);
 
     const { data, count, error } = await query;
 
@@ -78,8 +169,11 @@ class SupabaseCollection {
       throw error;
     }
 
+    const items = data || [];
+    if (expand) await this._expandData(items, expand);
+
     return {
-      items: data || [],
+      items,
       totalItems: count || 0,
       page,
       perPage
@@ -87,6 +181,7 @@ class SupabaseCollection {
   }
 
   async getOne(id, options = {}) {
+    const { expand } = options;
     const query = this.supabase
       .from(this.collectionName)
       .select('*')
@@ -100,11 +195,13 @@ class SupabaseCollection {
       throw error;
     }
 
+    if (data && expand) await this._expandData([data], expand);
+
     return data;
   }
 
   async getFirstListItem(filter, options = {}) {
-    const { sort, ...rest } = options;
+    const { sort, expand, ...rest } = options;
     
     let query = this.supabase
       .from(this.collectionName)
@@ -116,21 +213,22 @@ class SupabaseCollection {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
         if (cond.field && cond.operator && cond.value) {
+          const field = cond.quoted ? `"${cond.field}"` : cond.field;
           switch (cond.operator) {
             case '=':
-              query = query.eq(cond.field, cond.value);
+              query = query.eq(field, cond.value);
               break;
             case '~':
-              query = query.ilike(cond.field, `%${cond.value}%`);
+              query = query.ilike(field, `%${cond.value}%`);
               break;
             case '>=':
-              query = query.gte(cond.field, cond.value);
+              query = query.gte(field, cond.value);
               break;
             case '<=':
-              query = query.lte(cond.field, cond.value);
+              query = query.lte(field, cond.value);
               break;
             case '!=':
-              query = query.neq(cond.field, cond.value);
+              query = query.neq(field, cond.value);
               break;
             default:
               break;
@@ -139,11 +237,7 @@ class SupabaseCollection {
       }
     }
 
-    if (sort) {
-      const isDesc = sort.startsWith('-');
-      const cleanField = isDesc ? sort.slice(1) : sort;
-      query = query.order(cleanField, { ascending: !isDesc });
-    }
+    query = this._applySort(query, sort);
 
     const { data, error } = await query;
 
@@ -156,15 +250,24 @@ class SupabaseCollection {
       throw new Error('Aucun enregistrement trouvé');
     }
 
-    return data[0];
+    const item = data[0];
+    if (expand) await this._expandData([item], expand);
+
+    return item;
   }
 
   async create(data) {
     let payload = data;
+    let fileField = null;
+    let fileObj = null;
+
     if (data instanceof FormData) {
       payload = {};
       for (const [key, value] of data.entries()) {
-        if (!(value instanceof File)) {
+        if (value instanceof File && value.size > 0) {
+          fileField = key;
+          fileObj = value;
+        } else if (!(value instanceof File)) {
           payload[key] = value;
         }
       }
@@ -174,6 +277,26 @@ class SupabaseCollection {
     for (const key of ['priority', 'auto_renew']) {
       if (payload[key] === 'true') payload[key] = true;
       if (payload[key] === 'false') payload[key] = false;
+    }
+
+    // Upload du fichier s'il y en a un
+    if (fileObj && fileField) {
+      try {
+        const ext = fileObj.name?.split('.').pop() || 'jpg';
+        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: uploadErr } = await this.supabase.storage
+          .from('uploads')
+          .upload(path, fileObj, { cacheControl: '3600', upsert: false });
+        if (!uploadErr) {
+          const { data: urlData } = this.supabase.storage.from('uploads').getPublicUrl(path);
+          payload[fileField] = urlData?.publicUrl || '';
+          if (fileField === 'photo') payload.photo_url = urlData?.publicUrl || '';
+        } else {
+          console.warn('⚠️ Upload fichier échoué:', uploadErr.message);
+        }
+      } catch (uploadErr) {
+        console.warn('⚠️ Upload fichier erreur:', uploadErr);
+      }
     }
 
     const { data: result, error } = await this.supabase
@@ -192,10 +315,14 @@ class SupabaseCollection {
 
   async update(id, data) {
     let payload = data;
+    const fileUploads = [];
+
     if (data instanceof FormData) {
       payload = {};
       for (const [key, value] of data.entries()) {
-        if (!(value instanceof File)) {
+        if (value instanceof File && value.size > 0) {
+          fileUploads.push({ field: key, file: value });
+        } else if (!(value instanceof File)) {
           payload[key] = value;
         }
       }
@@ -204,6 +331,26 @@ class SupabaseCollection {
     for (const key of ['priority', 'auto_renew']) {
       if (payload[key] === 'true') payload[key] = true;
       if (payload[key] === 'false') payload[key] = false;
+    }
+
+    // Upload files to storage
+    for (const { field, file } of fileUploads) {
+      try {
+        const ext = file.name?.split('.').pop() || 'jpg';
+        const path = `${id}/${field}-${Date.now()}.${ext}`;
+        const bucket = this.collectionName === 'branding_settings' ? 'branding' : 'uploads';
+        const { error: uploadErr } = await this.supabase.storage
+          .from(bucket)
+          .upload(path, file, { cacheControl: '3600', upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = this.supabase.storage.from(bucket).getPublicUrl(path);
+          payload[field] = urlData?.publicUrl || path;
+        } else {
+          console.warn(`⚠️ Upload ${field} échoué:`, uploadErr.message);
+        }
+      } catch (err) {
+        console.warn(`⚠️ Upload ${field} erreur:`, err);
+      }
     }
 
     const { data: result, error } = await this.supabase
@@ -236,7 +383,7 @@ class SupabaseCollection {
   }
 
   async getFullList(options = {}) {
-    const { filter, sort, ...rest } = options;
+    const { filter, sort, expand, ...rest } = options;
     
     let query = this.supabase
       .from(this.collectionName)
@@ -246,12 +393,13 @@ class SupabaseCollection {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
         if (cond.field && cond.operator && cond.value) {
+          const field = cond.quoted ? `"${cond.field}"` : cond.field;
           switch (cond.operator) {
             case '=':
-              query = query.eq(cond.field, cond.value);
+              query = query.eq(field, cond.value);
               break;
             case '~':
-              query = query.ilike(cond.field, `%${cond.value}%`);
+              query = query.ilike(field, `%${cond.value}%`);
               break;
             default:
               break;
@@ -260,11 +408,7 @@ class SupabaseCollection {
       }
     }
 
-    if (sort) {
-      const isDesc = sort.startsWith('-');
-      const cleanField = isDesc ? sort.slice(1) : sort;
-      query = query.order(cleanField, { ascending: !isDesc });
-    }
+    query = this._applySort(query, sort);
 
     const { data, error } = await query;
 
@@ -273,7 +417,10 @@ class SupabaseCollection {
       throw error;
     }
 
-    return data || [];
+    const items = data || [];
+    if (expand) await this._expandData(items, expand);
+
+    return items;
   }
 
   parsePocketBaseFilter(filter) {
@@ -282,6 +429,17 @@ class SupabaseCollection {
     
     for (const part of parts) {
       const trimmed = part.trim();
+      // Support quoted column names like "user" = :val
+      const matchQuoted = trimmed.match(/^"([^"]+)"\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
+      if (matchQuoted) {
+        conditions.push({
+          field: matchQuoted[1],
+          operator: matchQuoted[2],
+          value: matchQuoted[3],
+          quoted: true,
+        });
+        continue;
+      }
       const match = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
       if (match) {
         conditions.push({
@@ -311,6 +469,15 @@ class PocketBaseCompatible {
     this.collections = {};
   }
 
+  // PocketBase-style filter template: pb.filter('kind = {:k}', { k: 'lost' })
+  filter(template, params = {}) {
+    let result = template;
+    for (const [key, val] of Object.entries(params)) {
+      result = result.replace(new RegExp(`\\{:${key}\\}`, 'g'), String(val));
+    }
+    return result;
+  }
+
   collection(name) {
     if (!this.collections[name]) {
       this.collections[name] = new SupabaseCollection(name, this.supabase);
@@ -338,32 +505,16 @@ class PocketBaseCompatible {
       email,
       password,
       options: {
-        data: userData
-      }
-    });
-
-    if (error) throw error;
-
-    if (data.user) {
-      const { error: insertError } = await this.supabase
-        .from('users')
-        .insert({
-          id: data.user.id,
-          email: email,
+        data: {
           name: userData.name || '',
           phone: userData.phone || '',
           city: userData.city || '',
           referred_by: userData.referred_by || '',
-          points: 0,
-          points_earned: 0,
-          plan: 'free',
-          role: 'user'
-        });
-
-      if (insertError) {
-        console.error('❌ Erreur création utilisateur:', insertError);
+        }
       }
-    }
+    });
+
+    if (error) throw error;
 
     this.authStore.record = data.user;
     this.authStore.token = data.session?.access_token || null;
@@ -400,25 +551,23 @@ class PocketBaseCompatible {
     getURL: (item, field, options = {}) => {
       if (!item || !field) return '';
       
-      const fileName = item[field];
-      if (!fileName) return '';
+      const val = item[field];
+      if (!val) return '';
       
-      // Déterminer le bucket en fonction de la collection
+      // If the value is already a full URL, return it directly
+      if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+        return options.thumb ? `${val}?width=${options.thumb.split('x')[0]}&height=${options.thumb.split('x')[1]}&resize=cover` : val;
+      }
+      
       let bucket = 'uploads';
-      if (item.collectionName === 'branding_settings' || field === 'logo_file') {
+      if (item.collectionName === 'branding_settings' || field === 'logo_file' || field === 'hero_file') {
         bucket = 'branding';
       }
       
-      // Chemin du fichier
-      const path = `${item.id}/${fileName}`;
-      
-      // Construction de l'URL publique
+      const path = `${item.id}/${val}`;
       const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
       
-      // Si des options de transformation sont demandées (thumb)
       if (options.thumb) {
-        // Supabase supporte les transformations d'images via l'API
-        // Exemple: /image/resize?width=400&height=300
         const [width, height] = options.thumb.split('x');
         return `${url}?width=${width}&height=${height}&resize=cover`;
       }
@@ -469,10 +618,15 @@ class PocketBaseCompatible {
     getBrandingUrl: (item, field = 'logo_file', options = {}) => {
       if (!item) return '';
       
-      const fileName = item[field];
-      if (!fileName) return item.logo_url || '';
+      const val = item[field];
+      if (!val) return item.logo_url || '';
       
-      const path = `branding/${item.id}/${fileName}`;
+      // If the value is already a full URL, return it directly
+      if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+        return options.thumb ? `${val}?width=${options.thumb.split('x')[0]}&height=${options.thumb.split('x')[1]}&resize=cover` : val;
+      }
+      
+      const path = `${item.id}/${val}`;
       const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/branding/${path}`;
       
       if (options.thumb) {

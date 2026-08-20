@@ -1,34 +1,51 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Route, Routes, BrowserRouter as Router } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import ScrollToTop from './components/ScrollToTop';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { BrandingProvider } from '@/contexts/BrandingContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import HomePage from './pages/HomePage';
-import SearchPage from './pages/SearchPage';
-import DeclareHubPage from './pages/DeclareHubPage';
-import DeclarePage from './pages/DeclarePage';
-import DeclarationPage from './pages/DeclarationPage';
-import DashboardPage from './pages/DashboardPage';
-import LeaderboardPage from './pages/LeaderboardPage';
-import PremiumPage from './pages/PremiumPage';
-import LoginPage from './pages/LoginPage';
-import SignupPage from './pages/SignupPage';
-import AdminPage from './pages/AdminPage';
-import AdminBrandingPage from './pages/AdminBrandingPage';
-import RewardsPage from './pages/RewardsPage';
-import PartnersPage from './pages/PartnersPage';
-import ProfilePage from './pages/ProfilePage';
-import DonatePage from './pages/DonatePage';
-import SubscriptionPage from './pages/SubscriptionPage';
-import ProAccountsPage from './pages/ProAccountsPage';
-import DepositPVPage from './pages/DepositPVPage';
-import RestitutionPVPage from './pages/RestitutionPVPage';
+
+const HomePage = lazy(() => import('./pages/HomePage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
+const DeclareHubPage = lazy(() => import('./pages/DeclareHubPage'));
+const DeclarePage = lazy(() => import('./pages/DeclarePage'));
+const DeclarationPage = lazy(() => import('./pages/DeclarationPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
+const PremiumPage = lazy(() => import('./pages/PremiumPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const SignupPage = lazy(() => import('./pages/SignupPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const AdminBrandingPage = lazy(() => import('./pages/AdminBrandingPage'));
+const AdminSponsorsPage = lazy(() => import('./pages/AdminSponsorsPage'));
+const AdminHeroPage = lazy(() => import('./pages/AdminHeroPage'));
+const RewardsPage = lazy(() => import('./pages/RewardsPage'));
+const PartnersPage = lazy(() => import('./pages/PartnersPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const DonatePage = lazy(() => import('./pages/DonatePage'));
+const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
+const ProAccountsPage = lazy(() => import('./pages/ProAccountsPage'));
+const DepositPVPage = lazy(() => import('./pages/DepositPVPage'));
+const RestitutionPVPage = lazy(() => import('./pages/RestitutionPVPage'));
+const AdminScanPage = lazy(() => import('./pages/AdminScanPage'));
+const PVLookupPage = lazy(() => import('./pages/PVLookupPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const SuccessPage = lazy(() => import('./pages/SuccessPage'));
+
+const PageLoader = () => (
+    <div className="flex h-[80dvh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    </div>
+);
 
 function App() {
     return (
         <Router>
+            <ThemeProvider>
             <AuthProvider>
                 <BrandingProvider>
                     <ScrollToTop />
@@ -41,6 +58,7 @@ function App() {
                             },
                         }}
                     />
+                    <Suspense fallback={<PageLoader />}>
                     <Routes>
                         <Route path="/" element={<HomePage />} />
                         <Route path="/rechercher" element={<SearchPage />} />
@@ -66,6 +84,10 @@ function App() {
                         <Route path="/premium" element={<PremiumPage />} />
                         <Route path="/connexion" element={<LoginPage />} />
                         <Route path="/inscription" element={<SignupPage />} />
+                        <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
+                        <Route path="/reinitialiser-mot-de-passe" element={<ResetPasswordPage />} />
+                        <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
+                        <Route path="/reinitialiser-mot-de-passe" element={<ResetPasswordPage />} />
                         <Route
                             path="/recompenses"
                             element={
@@ -75,6 +97,7 @@ function App() {
                             }
                         />
                         <Route path="/partenaires" element={<PartnersPage />} />
+                        <Route path="/success" element={<SuccessPage />} />
                         <Route path="/don" element={<DonatePage />} />
                         <Route path="/abonnement" element={<SubscriptionPage />} />
                         <Route path="/comptes-pro" element={<ProAccountsPage />} />
@@ -103,6 +126,22 @@ function App() {
                             }
                         />
                         <Route
+                            path="/admin/sponsors"
+                            element={
+                                <ProtectedRoute redirectTo="/connexion">
+                                    <AdminSponsorsPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/admin/hero"
+                            element={
+                                <ProtectedRoute redirectTo="/connexion">
+                                    <AdminHeroPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
                             path="/pv-depot"
                             element={
                                 <ProtectedRoute redirectTo="/connexion">
@@ -118,9 +157,31 @@ function App() {
                                 </ProtectedRoute>
                             }
                         />
+                        <Route
+                            path="/pv/:pvNumber"
+                            element={<PVLookupPage />}
+                        />
+                        <Route
+                            path="/admin/scan"
+                            element={
+                                <ProtectedRoute redirectTo="/connexion">
+                                    <AdminScanPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/notifications"
+                            element={
+                                <ProtectedRoute redirectTo="/connexion">
+                                    <NotificationsPage />
+                                </ProtectedRoute>
+                            }
+                        />
                     </Routes>
+                    </Suspense>
                 </BrandingProvider>
             </AuthProvider>
+            </ThemeProvider>
         </Router>
     );
 }

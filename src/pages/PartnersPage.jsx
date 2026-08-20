@@ -1,5 +1,5 @@
 import React from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { Handshake, Star, Trophy } from "lucide-react";
 import Layout from "@/components/Layout";
@@ -10,7 +10,7 @@ const PARTNERS = [
     type: "Télécommunications",
     reward: "100 000 pts offerts ce mois-ci",
     desc: "Recharges téléphoniques et forfaits Internet disponibles dans la boutique de points.",
-    color: "bg-orange-50 border-orange-200",
+    color: "bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800/30",
     tag: "Sponsor principal",
   },
   {
@@ -18,7 +18,7 @@ const PARTNERS = [
     type: "Services financiers",
     reward: "50 000 pts disponibles",
     desc: "Transfert de vos gains directement sur votre portefeuille MTN MoMo.",
-    color: "bg-yellow-50 border-yellow-200",
+    color: "bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800/30",
     tag: "Partenaire financier",
   },
   {
@@ -26,7 +26,7 @@ const PARTNERS = [
     type: "Fintech",
     reward: "30 000 pts ce mois",
     desc: "Retirez vos gains RetrouveMoi instantanément via Wave.",
-    color: "bg-blue-50 border-blue-200",
+    color: "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800/30",
     tag: "Partenaire paiement",
   },
   {
@@ -34,7 +34,7 @@ const PARTNERS = [
     type: "E-commerce",
     reward: "Bons d'achat exclusifs",
     desc: "Échangez vos points contre des bons d'achat Jumia pour faire vos emplettes.",
-    color: "bg-orange-50 border-orange-100",
+    color: "bg-orange-50 border-orange-100 dark:bg-orange-900/20 dark:border-orange-800/30",
     tag: "Partenaire commerce",
   },
 ];

@@ -1,0 +1,21 @@
+[build]
+  publish = "dist"
+  command = "npx vite build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/api/webhook"
+  to = "/.netlify/functions/webhook"
+  status = 200
+
+[[redirects]]
+  from = "/api/withdraw"
+  to = "/.netlify/functions/withdraw"
+  status = 200
+
+[[redirects]]
+  from = "/api/withdraw-hook"
+  to = "/.netlify/functions/withdraw-hook"
+  status = 200
