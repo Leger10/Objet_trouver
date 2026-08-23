@@ -1,10 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_REST_KEY = process.env.ONESIGNAL_REST_API_KEY;
 
@@ -20,7 +13,7 @@ export default async (req) => {
       return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400 });
     }
 
-    // 1. Send push via OneSignal REST API
+    // Send push via OneSignal REST API
     let pushSent = false;
     if (ONESIGNAL_APP_ID && ONESIGNAL_REST_KEY) {
       try {
@@ -43,44 +36,8 @@ export default async (req) => {
       } catch (_) {}
     }
 
-    // 2. Send email via Resend (if configured)
-    const RESEND_API_KEY = process.env.RESEND_API_KEY;
-    let emailSent = false;
-    if (RESEND_API_KEY) {
-      try {
-        const { data: user } = await supabase
-          .from("users")
-          .select("email, name")
-          .eq("id", userId)
-          .single();
-
-        if (user?.email) {
-          const emailRes = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${RESEND_API_KEY}`,
-            },
-            body: JSON.stringify({
-              from: "RetrouveMoi <noreply@retrouvemoi.netlify.app>",
-              to: user.email,
-              subject: title,
-              html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-                <h2 style="color:#059669;">🔔 ${title}</h2>
-                <p style="font-size:16px;color:#333;white-space:pre-line;">${body}</p>
-                ${url ? `<a href="https://retrouvemoi.netlify.app${url}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#059669;color:white;text-decoration:none;border-radius:12px;font-weight:bold;">Voir la déclaration</a>` : ""}
-                <hr style="margin-top:32px;border:none;border-top:1px solid #eee;" />
-                <p style="font-size:12px;color:#999;">RetrouveMoi — Service de retrouvaille d'objets</p>
-              </div>`,
-            }),
-          });
-          emailSent = emailRes.ok;
-        }
-      } catch (_) {}
-    }
-
     return new Response(
-      JSON.stringify({ pushSent, emailSent }),
+      JSON.stringify({ pushSent }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {

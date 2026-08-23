@@ -12,6 +12,7 @@ const DeclarationCard = ({ item, index = 0 }) => {
     ? pb.files.getURL(item, item.photo, { thumb: "400x300" })
     : item.photo_url || null;
   const isLost = item.kind === "lost";
+  const isPerson = ["enfant-disparu", "personne-disparue"].includes(item.expand?.category?.slug || item.category || "");
   const hasPriority =
     item.priority && item.priority_until && new Date(item.priority_until).getTime() > Date.now();
 
@@ -51,7 +52,7 @@ const DeclarationCard = ({ item, index = 0 }) => {
                 : "bg-emerald-500 text-white"
             }`}
           >
-            {isLost ? "Perdu" : "Trouvé"}
+            {isLost ? (isPerson ? "Disparu" : "Perdu") : "Trouvé"}
           </span>
         </div>
 

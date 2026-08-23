@@ -114,11 +114,11 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('auth_block_reason', 'Votre compte a été bloqué par l\'administrateur.');
             return;
           }
-          setUser(null);
-          setIsAuthed(false);
-          pb.authStore.record = null;
-          pb.authStore.token = null;
-          pb.authStore.isAuth = false;
+          setUser(merged);
+          setIsAuthed(true);
+          pb.authStore.record = session.user;
+          pb.authStore.token = session.access_token;
+          pb.authStore.isAuth = true;
         }
       }
     );

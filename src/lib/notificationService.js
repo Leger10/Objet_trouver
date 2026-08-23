@@ -1,4 +1,4 @@
-// Service de notifications : in-app + push (OneSignal) + email queue
+// Service de notifications : in-app + push (OneSignal)
 import { pb, supabase } from "./supabaseClient";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -43,16 +43,26 @@ export const createNotification = async (userId, title, body, link = "/tableau-d
   }
 };
 
-// Push + email via Netlify function (server-side)
-export const sendPushAndEmail = async (userId, title, body, link) => {
+// ─── PUSH via Netlify function ───
+
+const SITE_URL = import.meta.env.VITE_SITE_URL || "https://retrouvemoi.netlify.app";
+
+export const sendPush = async (userId, title, body, link) => {
   try {
+    const absoluteUrl = link?.startsWith("http") ? link : `${SITE_URL}${link || ""}`;
     await fetch("/api/notify-user", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, title, body, url: link }),
+      body: JSON.stringify({ userId, title, body, url: absoluteUrl }),
     });
   } catch (_) {}
 };
+
+// Alias pour compatibilité — push only
+export const sendPushAndEmail = sendPush;
+
+// Email no-op (supprimé — pas de domaine vérifié)
+export const queueEmail = async () => {};
 
 // Notifier tous les users sauf l'expéditeur
 export const notifyAllUsers = async (senderId, title, body, link) => {
@@ -112,41 +122,6 @@ export const initOneSignal = async () => {
   }
 };
 
-// Envoyer push à un user spécifique (via REST API Supabase Edge Function ou direct)
-export const sendPushToUser = async (userId, title, body, url = "/tableau-de-bord") => {
-  try {
-    // On utilise le tag OneSignal = user ID Supabase
-    await window.OneSignal?.sendNotificationToExternalUser({
-      include_external_user_ids: [userId],
-      contents: { fr: body },
-      headings: { fr: title },
-      url,
-    });
-  } catch (_) {
-    /* OneSignal REST API pas disponible côté client — on skip */
-  }
-};
-
-// Push broadcast à tous les users sauf l'expéditeur
-export const pushAllUsers = async (senderId, title, body, url) => {
-  // On ne peut pas envoyer push broadcast depuis le client
-  // Les pushes seront gérés par les notifications in-app + email queue
-};
-
-// ─── EMAIL QUEUE ───
-
-export const queueEmail = async (toEmail, subject, body) => {
-  try {
-    await supabase.from("email_queue").insert({
-      to_email: toEmail,
-      subject,
-      body,
-      status: "pending",
-    });
-  } catch (_) {
-    /* best-effort */
-  }
-};
 
 // ─── ADMIN PROXIMITY LOOKUP ───
 
@@ -183,29 +158,6 @@ export const onDeclarationCreated = async (declaration, user) => {
 
   // 1. Notification in-app à tous les autres users
   await notifyAllUsers(user.id, title, body, link);
-
-  // 2. Email à tous les autres users
-  try {
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, email")
-      .neq("id", user.id)
-      .not("email", "is", null);
-
-    if (users?.length) {
-      await Promise.all(
-        users.map((u) =>
-          queueEmail(
-            u.email,
-            title,
-            `${body}\n\nConsultez la déclaration : ${SUPABASE_URL}/objet/${declaration.id}\n\nL'équipe ${user.name || "RetrouveMoi"}`
-          )
-        )
-      );
-    }
-  } catch (_) {
-    /* best-effort */
-  }
 };
 
 // ─── WORKFLOW : CORRESPONDANCE TROUVÉE ───
@@ -265,91 +217,7 @@ export const onMatchFound = async (match, lostDecl, foundDecl) => {
     `/objet/${foundDecl.id}`
   ).catch(() => {});
 
-  // 3. Email au propriétaire de la déclaration perdue
-  try {
-    const { data: owner } = await supabase
-      .from("users")
-      .select("email, name")
-      .eq("id", lostDecl.owner)
-      .single();
-
-    if (owner?.email) {
-      const pvDetails = pvInfo ? `
-DÉTAILS DU DÉPÔT :
-${pvInfo.pvNumber ? `Procès-verbal n°${pvInfo.pvNumber}` : ""}
-${pvInfo.adminName ? `Administrateur responsable : ${pvInfo.adminName}` : ""}
-${pvInfo.location ? `Lieu de retrait : ${pvInfo.location}` : ""}
-` : "";
-
-      const adminDetails = nearestAdmin
-        ? nearestAdmin.matchLevel === "exact"
-          ? `\n📍 Admin dans votre quartier (${nearestAdmin.quarter}) : ${nearestAdmin.name}`
-          : nearestAdmin.matchLevel === "city"
-            ? `\n📍 Admin dans votre ville (${nearestAdmin.city}) : ${nearestAdmin.name}`
-            : `\n📍 Admin RetrouveMoi : ${nearestAdmin.name}`
-        : "";
-
-      await queueEmail(
-        owner.email,
-        `Votre objet "${lostDecl.title}" a été retrouvé !`,
-        `Bonjour ${owner.name || ""},
-
-Bonne nouvelle ! Un objet correspondant à votre déclaration "${lostDecl.title}" a été retrouvé.
-
-Objet retrouvé : ${foundDecl.title}
-Ville : ${foundDecl.city || "Non renseignée"}
-Quartier : ${foundDecl.zone || "Non renseigné"}
-Score de correspondance : ${score}%
-${pvDetails}${adminDetails}
-Pour récupérer votre objet, présentez-vous à l'endroit indiqué avec une pièce d'identité.
-
-Cordialement,
-L'équipe RetrouveMoi`
-      );
-    }
-  } catch (_) {
-    /* best-effort */
-  }
-
-  // 4. Email au déclarant de l'objet retrouvé (pour l'inviter à déposer)
-  try {
-    const { data: finder } = await supabase
-      .from("users")
-      .select("email, name")
-      .eq("id", foundDecl.owner)
-      .single();
-
-    if (finder?.email) {
-      const depositInstructions = nearestAdmin
-        ? nearestAdmin.matchLevel === "exact"
-          ? `\n📍 Déposez l'objet chez ${nearestAdmin.name} dans le quartier ${nearestAdmin.quarter} (${nearestAdmin.city})`
-          : nearestAdmin.matchLevel === "city"
-            ? `\n📍 Déposez l'objet chez ${nearestAdmin.name} à ${nearestAdmin.city}`
-            : `\n📍 Déposez l'objet chez ${nearestAdmin.name}`
-        : "";
-
-      await queueEmail(
-        finder.email,
-        `Votre objet "${foundDecl.title}" correspond à une déclaration de perte`,
-        `Bonjour ${finder.name || ""},
-
-Une personne a déclaré la perte de "${lostDecl.title}" et votre déclaration "${foundDecl.title}" y correspond (${score}% de similarité).
-
-Objet trouvé : ${foundDecl.title}
-Ville : ${foundDecl.city || "Non renseignée"}
-Quartier : ${foundDecl.zone || "Non renseigné"}
-${depositInstructions}
-Merci de déposer l'objet chez l'administrateur indiqué ci-dessus. Le propriétaire pourra alors le récupérer avec une pièce d'identité.
-
-Cordialement,
-L'équipe RetrouveMoi`
-      );
-    }
-  } catch (_) {
-    /* best-effort */
-  }
-
-  // 5. Notifier l'admin le plus proche
+  // 3. Notifier l'admin le plus proche
   try {
     if (nearestAdmin) {
       const levelLabel = nearestAdmin.matchLevel === "exact"
@@ -392,32 +260,4 @@ export const onCompleteRestitution = async (pv, declaration, claimantUser) => {
     `Votre objet "${declaration.title}" a été restitué${adminLabel}. Merci d'avoir utilisé RetrouveMoi.`,
     `/tableau-de-bord`
   );
-
-  // 4. Email de confirmation
-  try {
-    const { data: owner } = await supabase
-      .from("users")
-      .select("email, name")
-      .eq("id", declaration.owner)
-      .single();
-
-    if (owner?.email) {
-      const pvLocation = pv.location || "";
-      await queueEmail(
-        owner.email,
-        `Votre objet "${declaration.title}" a été restitué`,
-        `Bonjour ${owner.name || ""},
-
-Votre objet "${declaration.title}" a bien été restitué${adminLabel}.
-${pvLocation ? `Lieu de restitution : ${pvLocation}` : ""}
-
-Votre déclaration est maintenant archivée.
-
-Merci d'avoir utilisé RetrouveMoi !
-
-Cordialement,
-L'équipe RetrouveMoi`
-      );
-    }
-  } catch (_) {}
 };

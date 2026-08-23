@@ -2,6 +2,8 @@ import { pb } from "@/lib/supabaseClient";
 
 // Métadonnées par slug de catégorie : icône, libellé court, groupe
 export const CATEGORY_META = {
+  "enfant-disparu": { emoji: "👦", label: "Enfant égaré", group: "personnes" },
+  "personne-disparue": { emoji: "🧑", label: "Personne disparue", group: "personnes" },
   cni: { emoji: "🆔", label: "CNI", group: "documents" },
   passeport: { emoji: "📕", label: "Passeport", group: "documents" },
   permis: { emoji: "🪪", label: "Permis", group: "documents" },
@@ -20,6 +22,12 @@ export const CATEGORY_META = {
 
 // Groupes logiques ordonnés
 export const CATEGORY_GROUPS = [
+  {
+    key: "personnes",
+    label: "Personnes",
+    emoji: "🧑",
+    slugs: ["enfant-disparu", "personne-disparue"],
+  },
   {
     key: "documents",
     label: "Documents",
@@ -48,6 +56,13 @@ export const CATEGORY_GROUPS = [
 
 // Palette par groupe (classes Tailwind)
 export const GROUP_STYLES = {
+  personnes: {
+    tile: "bg-rose-50 border-rose-200 text-rose-700",
+    active: "bg-rose-600 border-rose-600 text-white",
+    dot: "bg-rose-500",
+    soft: "bg-rose-50 text-rose-700",
+    bar: "bg-rose-500",
+  },
   documents: {
     tile: "bg-blue-50 border-blue-200 text-blue-700",
     active: "bg-blue-600 border-blue-600 text-white",

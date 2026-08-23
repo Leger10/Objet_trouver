@@ -68,7 +68,7 @@ export default async function handler(req) {
             include_external_user_ids: adminIds,
             headings: { fr: `Message de support — ${sender_name}` },
             contents: { fr: `[${subjectLabel}] ${message_preview.slice(0, 200)}` },
-            url: '/admin',
+            url: 'https://retrouvemoi.netlify.app/admin',
           }),
         });
         const pushData = await pushRes.json();

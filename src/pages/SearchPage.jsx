@@ -8,7 +8,7 @@ import AdSlot from "@/components/AdSlot";
 import DeclarationCard from "@/components/DeclarationCard";
 import PullToRefresh from "@/components/PullToRefresh";
 import CategoryGrid from "@/components/CategoryGrid";
-import { fetchCategoryCounts } from "@/lib/categories";
+import { fetchCategoryCounts, CATEGORY_GROUPS, CATEGORY_META } from "@/lib/categories";
 
 const field =
   "w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30";
@@ -43,8 +43,45 @@ const SearchPage = () => {
   useEffect(() => {
     pb.collection("categories")
       .getFullList({ sort: "position", requestKey: "cats-search" })
-      .then(setCategories)
-      .catch(() => setCategories([]));
+      .then((cats) => {
+        if (cats.length > 0) {
+          const dbSlugs = new Set(cats.map((c) => c.slug || c.id));
+          const localMissing = CATEGORY_GROUPS.flatMap((g) =>
+            g.slugs
+              .filter((s) => !dbSlugs.has(s))
+              .map((slug, i) => ({
+                id: slug,
+                slug,
+                name: CATEGORY_META[slug]?.label || slug,
+                position: (cats.length || 0) + i,
+              }))
+          );
+          setCategories([...cats, ...localMissing]);
+        } else {
+          setCategories(
+            CATEGORY_GROUPS.flatMap((g) =>
+              g.slugs.map((slug, pos) => ({
+                id: slug,
+                slug,
+                name: CATEGORY_META[slug]?.label || slug,
+                position: pos,
+              }))
+            )
+          );
+        }
+      })
+      .catch(() => {
+        setCategories(
+          CATEGORY_GROUPS.flatMap((g) =>
+            g.slugs.map((slug, pos) => ({
+              id: slug,
+              slug,
+              name: CATEGORY_META[slug]?.label || slug,
+              position: pos,
+            }))
+          )
+        );
+      });
   }, []);
 
   // Synchronise l'URL quand la catégorie change (partage / deep-link)
@@ -199,8 +236,8 @@ const SearchPage = () => {
               Rechercher dans toute la base
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Une seule recherche couvre l'ensemble des déclarations, égarées
-              comme retrouvées.
+              Une seule recherche couvre l'ensemble des déclarations : objets,
+              documents et personnes disparues.
             </p>
             <div className="mt-4 sm:mt-5 flex gap-2">
               <div className="relative flex-1">
@@ -230,7 +267,7 @@ const SearchPage = () => {
                   onChange={set("kind")}
                 >
                   <option value="all">Tous les types</option>
-                  <option value="lost">Égarés</option>
+                  <option value="lost">Égarés / Disparus</option>
                   <option value="found">Retrouvés</option>
                 </select>
                 <select
@@ -259,7 +296,7 @@ const SearchPage = () => {
                 />
                 <input
                   className={field}
-                  placeholder="Nom sur le document"
+                  placeholder="Nom complet"
                   value={filters.person_name}
                   onChange={set("person_name")}
                 />
@@ -354,7 +391,7 @@ const SearchPage = () => {
             {!loading && items.length === 0 && (
               <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground lg:col-span-2">
                 Aucun résultat. Essayez moins de critères, ou déclarez votre
-                objet pour être alerté automatiquement.
+                objet ou personne pour être alerté automatiquement.
               </div>
             )}
             {items.map((item, i) => (

@@ -466,12 +466,10 @@ const DashboardPage = () => {
             className="space-y-2"
           >
             <QuickAction to="/declarer/perdu" icon={AlertTriangle} label="Déclarer un objet perdu" sub="Enregistrer une perte" accent />
-            <QuickAction to="/declarer/retrouvé" icon={Package} label="Déclarer un objet trouvé" sub="Aider quelqu'un à récupérer son bien" />
+            <QuickAction to="/declarer/retrouve" icon={Package} label="Déclarer un objet trouvé" sub="Aider quelqu'un à récupérer son bien" />
             <QuickAction to="/rechercher" icon={Target} label="Rechercher un objet" sub="Parcourir les objets trouvés" />
             <QuickAction to="/recompenses" icon={Banknote} label="Retirer mes gains" sub={`${(user?.points || 0).toLocaleString()} pts → FCFA`} />
-            {myMatches.length > 0 && (
-              <QuickAction to="/mes-correspondances" icon={Handshake} label={`${myMatches.length} correspondance${myMatches.length > 1 ? "s" : ""}`} sub="Voir les objets retrouvés" />
-            )}
+            <QuickAction to="/mes-correspondances" icon={Handshake} label="Mes correspondances" sub={myMatches.length > 0 ? `${myMatches.length} correspondance${myMatches.length > 1 ? "s" : ""} trouvée${myMatches.length > 1 ? "s" : ""}` : "Vérifier les objets retrouvés"} />
           </motion.div>
 
           {/* ── CORRESPONDANCES ── */}
@@ -572,6 +570,12 @@ const DashboardPage = () => {
                   );
                 })}
                 <ListFooter {...matchesPaginate} total={myMatches.length} />
+                {myMatches.length > 0 && (
+                  <Link to="/mes-correspondances" className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-primary/10 px-4 py-2.5 text-xs font-extrabold text-primary hover:bg-primary/15 transition">
+                    <Handshake className="h-4 w-4" />
+                    Voir toutes mes correspondances
+                  </Link>
+                )}
               </div>
             )}
           </Section>

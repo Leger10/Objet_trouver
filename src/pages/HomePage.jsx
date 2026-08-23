@@ -83,11 +83,10 @@ const HomePage = () => {
         found: get(1, { totalItems: 0 }).totalItems || 0,
         returned: get(2, { totalItems: 0 }).totalItems || 0,
       });
-      setCategories(get(3, []));
       setCatCounts(get(4, {}));
 
-      // Fallback: generate categories from static meta if DB table is empty/missing
-      if (get(3, []).length === 0) {
+      const dbCats = get(3, []);
+      if (dbCats.length === 0) {
         const fallback = CATEGORY_GROUPS.flatMap((g) =>
           g.slugs.map((slug, pos) => ({
             id: slug,
@@ -97,6 +96,19 @@ const HomePage = () => {
           }))
         );
         setCategories(fallback);
+      } else {
+        const dbSlugs = new Set(dbCats.map((c) => c.slug || c.id));
+        const localMissing = CATEGORY_GROUPS.flatMap((g) =>
+          g.slugs
+            .filter((s) => !dbSlugs.has(s))
+            .map((slug, i) => ({
+              id: slug,
+              slug,
+              name: CATEGORY_META[slug]?.label || slug,
+              position: (dbCats.length || 0) + i,
+            }))
+        );
+        setCategories([...dbCats, ...localMissing]);
       }
     } catch (_) {
       setStats({ lost: 0, found: 0, returned: 0 });
@@ -124,13 +136,13 @@ const HomePage = () => {
       <PullToRefresh onRefresh={load}>
         {/* ── HERO IMAGE (rotation multi-images) ── */}
         <HeroRotator fallbackImage={branding.hero_image_url || DEFAULT_HERO}>
-          <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={0}>
+          {/* <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={0}>
             <BrandLogo
               size="lg"
               linkToHome={false}
               imgClassName="rounded-xl bg-black/30 p-1 shadow-lg"
             />
-          </motion.div>
+          </motion.div> */}
           <motion.p
             variants={fadeUp} initial="hidden" animate="visible" custom={1}
             className="mt-2 text-xs font-bold uppercase tracking-[0.18em]"

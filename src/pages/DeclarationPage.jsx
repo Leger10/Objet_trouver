@@ -226,11 +226,16 @@ const DeclarationPage = () => {
 
   const allRevealed = isDocumentPhoto && !isDocumentCategory && revealedFields.size >= 4;
 
+  const isPersonCategory = ["enfant-disparu", "personne-disparue"].includes(catSlug);
+
   const detailItems = [
     { key: "name", icon: "👤", label: "Nom", value: item.person_name || "Non communiqué", show: true },
-    { key: "brand", icon: "🏷️", label: "Marque", value: item.brand || "—", show: true },
-    { key: "color", icon: "🎨", label: "Couleur", value: item.color || "—", show: true },
-    { key: "doc", icon: "🔢", label: "ID document", value: item.doc_last4 || "—", show: true },
+    { key: "sex", icon: "⚧", label: "Sexe", value: item.person_sex === "M" ? "Masculin" : item.person_sex === "F" ? "Féminin" : "—", show: isPersonCategory },
+    { key: "age", icon: "🎂", label: "Âge", value: item.person_age || "—", show: isPersonCategory },
+    { key: "brand", icon: "🏷️", label: "Marque", value: item.brand || "—", show: !isPersonCategory },
+    { key: "color", icon: "🎨", label: "Couleur", value: item.color || "—", show: !isPersonCategory },
+    { key: "descPhys", icon: "📋", label: "Description physique", value: item.brand || "—", show: isPersonCategory },
+    { key: "doc", icon: "🔢", label: "ID document", value: item.doc_last4 || "—", show: !isPersonCategory },
   ].filter((d) => d.show);
 
   const statusConfig = {

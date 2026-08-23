@@ -119,6 +119,35 @@ class SupabaseCollection {
     return query;
   }
 
+  _applyCondition(query, cond) {
+    if (cond.type === 'or' && cond.conditions?.length) {
+      const orFilter = cond.conditions.map((c) => {
+        const f = c.field;
+        switch (c.operator) {
+          case '=': return `${f}.eq.${c.value}`;
+          case '!=': return `${f}.neq.${c.value}`;
+          case '~': return `${f}.ilike.%${c.value}%`;
+          case '>=': return `${f}.gte.${c.value}`;
+          case '<=': return `${f}.lte.${c.value}`;
+          default: return `${f}.eq.${c.value}`;
+        }
+      }).join(',');
+      return query.or(orFilter);
+    }
+    if (cond.field && cond.operator && cond.value) {
+      const field = cond.quoted ? `"${cond.field}"` : cond.field;
+      switch (cond.operator) {
+        case '=': return query.eq(field, cond.value);
+        case '~': return query.ilike(field, `%${cond.value}%`);
+        case '>=': return query.gte(field, cond.value);
+        case '<=': return query.lte(field, cond.value);
+        case '!=': return query.neq(field, cond.value);
+        default: return query;
+      }
+    }
+    return query;
+  }
+
   async getList(page = 1, perPage = 50, options = {}) {
     const { filter, sort, expand, ...rest } = options;
     
@@ -134,28 +163,7 @@ class SupabaseCollection {
     if (filter) {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
-        if (cond.field && cond.operator && cond.value) {
-          const field = cond.quoted ? `"${cond.field}"` : cond.field;
-          switch (cond.operator) {
-            case '=':
-              query = query.eq(field, cond.value);
-              break;
-            case '~':
-              query = query.ilike(field, `%${cond.value}%`);
-              break;
-            case '>=':
-              query = query.gte(field, cond.value);
-              break;
-            case '<=':
-              query = query.lte(field, cond.value);
-              break;
-            case '!=':
-              query = query.neq(field, cond.value);
-              break;
-            default:
-              break;
-          }
-        }
+        query = this._applyCondition(query, cond);
       }
     }
 
@@ -212,28 +220,7 @@ class SupabaseCollection {
     if (filter) {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
-        if (cond.field && cond.operator && cond.value) {
-          const field = cond.quoted ? `"${cond.field}"` : cond.field;
-          switch (cond.operator) {
-            case '=':
-              query = query.eq(field, cond.value);
-              break;
-            case '~':
-              query = query.ilike(field, `%${cond.value}%`);
-              break;
-            case '>=':
-              query = query.gte(field, cond.value);
-              break;
-            case '<=':
-              query = query.lte(field, cond.value);
-              break;
-            case '!=':
-              query = query.neq(field, cond.value);
-              break;
-            default:
-              break;
-          }
-        }
+        query = this._applyCondition(query, cond);
       }
     }
 
@@ -392,28 +379,7 @@ class SupabaseCollection {
     if (filter) {
       const conditions = this.parsePocketBaseFilter(filter);
       for (const cond of conditions) {
-        if (cond.field && cond.operator && cond.value) {
-          const field = cond.quoted ? `"${cond.field}"` : cond.field;
-          switch (cond.operator) {
-            case '=':
-              query = query.eq(field, cond.value);
-              break;
-            case '~':
-              query = query.ilike(field, `%${cond.value}%`);
-              break;
-            case '>=':
-              query = query.gte(field, cond.value);
-              break;
-            case '<=':
-              query = query.lte(field, cond.value);
-              break;
-            case '!=':
-              query = query.neq(field, cond.value);
-              break;
-            default:
-              break;
-          }
-        }
+        query = this._applyCondition(query, cond);
       }
     }
 
@@ -438,6 +404,24 @@ class SupabaseCollection {
     
     for (const part of parts) {
       const trimmed = part.trim();
+      
+      // Support OR groups: (field1 ~ val || field2 ~ val)
+      const orMatch = trimmed.match(/^\((.+)\)$/);
+      if (orMatch && orMatch[1].includes('||')) {
+        const orParts = orMatch[1].split(/\s*\|\|\s*/);
+        const orConds = [];
+        for (const orPart of orParts) {
+          const m = orPart.trim().match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
+          if (m) {
+            orConds.push({ field: m[1], operator: m[2], value: m[3] });
+          }
+        }
+        if (orConds.length > 0) {
+          conditions.push({ type: 'or', conditions: orConds });
+        }
+        continue;
+      }
+
       // Support quoted column names like "user" = :val
       const matchQuoted = trimmed.match(/^"([^"]+)"\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
       if (matchQuoted) {

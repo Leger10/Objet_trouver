@@ -54,7 +54,13 @@ const wordOverlap = (a, b) => {
 // Score de correspondance 0-100
 export const scoreMatch = (lost, found) => {
   const b = {};
-  b.categorie = lost.category && lost.category === found.category ? 20 : 0;
+
+  // Category must match for a valid score
+  if (!lost.category || lost.category !== found.category) {
+    return { total: 0, breakdown: { categorie: 0 } };
+  }
+  b.categorie = 20;
+
   b.ville = norm(lost.city) && norm(lost.city) === norm(found.city) ? 15 : 0;
   b.zone = norm(lost.zone) && norm(lost.zone) === norm(found.zone) ? 15 : 0;
 
@@ -132,12 +138,6 @@ export const runMatching = async (declaration) => {
         },
       );
       created.push({ ...rec, other: cand });
-      await notify(
-        cand.owner,
-        `Correspondance possible (${total}%)`,
-        `Une déclaration "${declaration.title}" pourrait correspondre à votre déclaration "${cand.title}".`,
-        "/tableau-de-bord",
-      );
       // Notification push + email au propriétaire de la déclaration perdue
       onMatchFound({ ...rec, score: total }, lost, found).catch(() => {});
     } catch (err) {
