@@ -225,7 +225,7 @@ const ProAccountsPage = () => {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, org_name: e.target.value }))
                   }
-                  placeholder="ex : Mairie de Cocody"
+                  placeholder="ex : Mairie de Ouaga 2000"
                   className={field}
                 />
               </label>

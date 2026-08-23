@@ -135,7 +135,7 @@ const PremiumPage = () => {
           </div>
           <img
             src={PHONE}
-            alt="Application RETROUVÉ consultée sur un téléphone à Dakar"
+            alt="Application RETROUVÉ consultée sur un téléphone à Ouagadougou"
             className="rounded-2xl object-cover"
           />
         </div>
@@ -272,7 +272,7 @@ const PremiumPage = () => {
                 inputMode="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="Ex: 0701234567"
+                placeholder="Ex: 0101 01 01"
                 className={field}
               />
             </label>

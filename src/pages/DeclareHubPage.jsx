@@ -80,7 +80,7 @@ const DeclareHubPage = () => {
                   J'AI RETROUVÉ
                 </span>
                 <span className="block text-sm text-white/85">
-                  +10 points immédiats
+                  Aidez à retrouver le propriétaire
                 </span>
               </span>
               <ArrowRight className="h-6 w-6 shrink-0 transition-transform group-active:translate-x-1" />

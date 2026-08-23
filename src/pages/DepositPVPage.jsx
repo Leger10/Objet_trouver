@@ -232,7 +232,7 @@ const DepositPVPage = () => {
                     className={inputCls}
                     value={form.signatoryPhone}
                     onChange={(e) => set("signatoryPhone", e.target.value)}
-                    placeholder="Ex : 07 XX XX XX XX"
+                    placeholder="Ex : 01 01 01 01"
                   />
                 </div>
                 <div>

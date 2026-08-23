@@ -730,7 +730,7 @@ const RewardsPage = () => {
                     type="text"
                     value={wName}
                     onChange={(e) => setWName(e.target.value)}
-                    placeholder="Ex : KOFFI Jean"
+                    placeholder="Ex : OUEDRAOGO Jean"
                     className="w-full rounded-xl border border-input bg-background px-4 py-3 text-base outline-none focus:border-primary"
                   />
                 </div>

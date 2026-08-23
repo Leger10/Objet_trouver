@@ -43,6 +43,17 @@ export const createNotification = async (userId, title, body, link = "/tableau-d
   }
 };
 
+// Push + email via Netlify function (server-side)
+export const sendPushAndEmail = async (userId, title, body, link) => {
+  try {
+    await fetch("/api/notify-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, title, body, url: link }),
+    });
+  } catch (_) {}
+};
+
 // Notifier tous les users sauf l'expéditeur
 export const notifyAllUsers = async (senderId, title, body, link) => {
   try {
@@ -137,6 +148,31 @@ export const queueEmail = async (toEmail, subject, body) => {
   }
 };
 
+// ─── ADMIN PROXIMITY LOOKUP ───
+
+export const findNearestAdmin = async (city = "", quarter = "") => {
+  try {
+    // Use SQL function via RPC — bypasses RLS (SECURITY DEFINER)
+    const { data, error } = await supabase.rpc("find_nearest_admin", {
+      p_city: city || "",
+      p_quarter: quarter || "",
+    });
+    if (error || !data?.length) return null;
+    const row = data[0];
+    return {
+      id: row.admin_id,
+      name: row.admin_name,
+      city: row.admin_city,
+      quarter: row.admin_quarter,
+      email: row.admin_email,
+      phone: row.admin_phone,
+      matchLevel: row.match_level,
+    };
+  } catch (_) {
+    return null;
+  }
+};
+
 // ─── WORKFLOW : DÉCLARATION CRÉÉE ───
 
 export const onDeclarationCreated = async (declaration, user) => {
@@ -185,15 +221,51 @@ export const onMatchFound = async (match, lostDecl, foundDecl) => {
 
   const pickupDetails = [adminLabel, locationLabel].filter(Boolean).join("\n");
 
+  // Find the nearest admin based on the found declaration's city/quarter
+  const nearestAdmin = await findNearestAdmin(
+    foundDecl.city || lostDecl.city || "",
+    foundDecl.zone || lostDecl.zone || ""
+  );
+
+  const depositInfo = nearestAdmin
+    ? nearestAdmin.matchLevel === "exact"
+      ? `Admin proche : ${nearestAdmin.name} (même quartier : ${nearestAdmin.quarter})`
+      : nearestAdmin.matchLevel === "city"
+        ? `Admin dans votre ville : ${nearestAdmin.name} (${nearestAdmin.city})`
+        : `Admin RetrouveMoi : ${nearestAdmin.name}`
+    : "";
+
   // 1. Notifier le propriétaire de la déclaration "perdue"
   await createNotification(
     lostDecl.owner,
     `Objet retrouvé ! (${score}%)`,
-    `Un objet "${foundDecl.title}" correspond à votre déclaration "${lostDecl.title}".${pickupDetails ? `\n\n${pickupDetails}` : ""}\nPrésentez-vous avec une pièce d'identité pour récupérer votre objet.`,
-    `/tableau-de-bord`
+    `Un objet "${foundDecl.title}" correspond à votre déclaration "${lostDecl.title}".${pickupDetails ? `\n\n${pickupDetails}` : ""}\n\nPrésentez-vous avec une pièce d'identité pour récupérer votre objet.`,
+    `/objet/${lostDecl.id}`
   );
+  // Push + email au propriétaire perdu
+  sendPushAndEmail(
+    lostDecl.owner,
+    `Objet retrouvé ! (${score}%)`,
+    `Un objet "${foundDecl.title}" correspond à votre déclaration "${lostDecl.title}".${pickupDetails ? ` ${pickupDetails}` : ""}`,
+    `/objet/${lostDecl.id}`
+  ).catch(() => {});
 
-  // 2. Email avec copie du PV de dépôt
+  // 2. Notifier le DÉCLARANT de l'objet retrouvé (celui qui l'a trouvé)
+  await createNotification(
+    foundDecl.owner,
+    `Votre objet "${foundDecl.title}" correspond à une déclaration de perte (${score}%)`,
+    `Une personne a déclaré la perte de "${lostDecl.title}".${depositInfo ? `\n\n${depositInfo}` : ""}\n\nVeuillez déposer l'objet chez l'administrateur le plus proche pour que le propriétaire puisse le récupérer. Une pièce d'identité sera demandée.`,
+    `/objet/${foundDecl.id}`
+  );
+  // Push + email au déclarant retrouvé
+  sendPushAndEmail(
+    foundDecl.owner,
+    `Correspondance trouvée (${score}%)`,
+    `Votre objet "${foundDecl.title}" correspond à une déclaration de perte.`,
+    `/objet/${foundDecl.id}`
+  ).catch(() => {});
+
+  // 3. Email au propriétaire de la déclaration perdue
   try {
     const { data: owner } = await supabase
       .from("users")
@@ -209,19 +281,27 @@ ${pvInfo.adminName ? `Administrateur responsable : ${pvInfo.adminName}` : ""}
 ${pvInfo.location ? `Lieu de retrait : ${pvInfo.location}` : ""}
 ` : "";
 
+      const adminDetails = nearestAdmin
+        ? nearestAdmin.matchLevel === "exact"
+          ? `\n📍 Admin dans votre quartier (${nearestAdmin.quarter}) : ${nearestAdmin.name}`
+          : nearestAdmin.matchLevel === "city"
+            ? `\n📍 Admin dans votre ville (${nearestAdmin.city}) : ${nearestAdmin.name}`
+            : `\n📍 Admin RetrouveMoi : ${nearestAdmin.name}`
+        : "";
+
       await queueEmail(
         owner.email,
         `Votre objet "${lostDecl.title}" a été retrouvé !`,
         `Bonjour ${owner.name || ""},
 
-Bonne nouvelle ! Un objet correspondant à votre déclaration "${lostDecl.title}" a été retrouvé et déposé dans nos locaux.
+Bonne nouvelle ! Un objet correspondant à votre déclaration "${lostDecl.title}" a été retrouvé.
 
 Objet retrouvé : ${foundDecl.title}
 Ville : ${foundDecl.city || "Non renseignée"}
+Quartier : ${foundDecl.zone || "Non renseigné"}
 Score de correspondance : ${score}%
-${pvDetails}
-Pour récupérer votre objet, présentez-vous à l'endroit indiqué ci-dessus avec une pièce d'identité.
-${pvInfo?.adminName ? `L'administrateur ${pvInfo.adminName}` : "L'administration"} vérifiera le procès-verbal et vous remettra votre objet.
+${pvDetails}${adminDetails}
+Pour récupérer votre objet, présentez-vous à l'endroit indiqué avec une pièce d'identité.
 
 Cordialement,
 L'équipe RetrouveMoi`
@@ -231,23 +311,58 @@ L'équipe RetrouveMoi`
     /* best-effort */
   }
 
-  // 3. Notifier l'admin du dépôt
+  // 4. Email au déclarant de l'objet retrouvé (pour l'inviter à déposer)
   try {
-    const { data: admins } = await supabase
+    const { data: finder } = await supabase
       .from("users")
-      .select("id")
-      .eq("role", "admin");
+      .select("email, name")
+      .eq("id", foundDecl.owner)
+      .single();
 
-    if (admins?.length) {
-      await Promise.all(
-        admins.map((a) =>
-          createNotification(
-            a.id,
-            "Nouvelle correspondance",
-            `Correspondance de ${score}% entre "${lostDecl.title}" (perdu) et "${foundDecl.title}" (retrouvé).${pvInfo?.pvNumber ? ` PV n°${pvInfo.pvNumber}.` : ""} Un PV de dépôt doit être établi.`,
-            `/admin`
-          )
-        )
+    if (finder?.email) {
+      const depositInstructions = nearestAdmin
+        ? nearestAdmin.matchLevel === "exact"
+          ? `\n📍 Déposez l'objet chez ${nearestAdmin.name} dans le quartier ${nearestAdmin.quarter} (${nearestAdmin.city})`
+          : nearestAdmin.matchLevel === "city"
+            ? `\n📍 Déposez l'objet chez ${nearestAdmin.name} à ${nearestAdmin.city}`
+            : `\n📍 Déposez l'objet chez ${nearestAdmin.name}`
+        : "";
+
+      await queueEmail(
+        finder.email,
+        `Votre objet "${foundDecl.title}" correspond à une déclaration de perte`,
+        `Bonjour ${finder.name || ""},
+
+Une personne a déclaré la perte de "${lostDecl.title}" et votre déclaration "${foundDecl.title}" y correspond (${score}% de similarité).
+
+Objet trouvé : ${foundDecl.title}
+Ville : ${foundDecl.city || "Non renseignée"}
+Quartier : ${foundDecl.zone || "Non renseigné"}
+${depositInstructions}
+Merci de déposer l'objet chez l'administrateur indiqué ci-dessus. Le propriétaire pourra alors le récupérer avec une pièce d'identité.
+
+Cordialement,
+L'équipe RetrouveMoi`
+      );
+    }
+  } catch (_) {
+    /* best-effort */
+  }
+
+  // 5. Notifier l'admin le plus proche
+  try {
+    if (nearestAdmin) {
+      const levelLabel = nearestAdmin.matchLevel === "exact"
+        ? "dans votre quartier"
+        : nearestAdmin.matchLevel === "city"
+          ? "dans votre ville"
+          : "";
+
+      await createNotification(
+        nearestAdmin.id,
+        "Nouvelle correspondance — Dépôt à traiter",
+        `Correspondance de ${score}% entre "${lostDecl.title}" (perdu) et "${foundDecl.title}" (retrouvé).${pvInfo?.pvNumber ? ` PV n°${pvInfo.pvNumber}.` : ""}\n\nUn déposant${levelLabel ? ` ${levelLabel}` : ""} va se présenter avec l'objet. Un PV de dépôt doit être établi.`,
+        `/admin`
       );
     }
   } catch (_) {}

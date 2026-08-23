@@ -110,14 +110,56 @@ const SearchPage = () => {
       try {
         const res = await pb.collection("declarations").getList(page, 20, {
           filter: parts.join(" && "),
-          sort: "-priority,-created",
+          sort: "-created",
           expand: "category",
           requestKey: "search",
         });
+
+        let sorted = res.items || [];
+
         if (page === 1) {
-          setItems(res.items);
+          const now = Date.now();
+          const today = new Date().toISOString().slice(0, 10);
+          const PULSE_MAX = 3;
+
+          const pulseKey = (id) => `pulse_${id}_${today}`;
+
+          const getPulseCount = (id) => {
+            try { return parseInt(localStorage.getItem(pulseKey(id)) || "0", 10); }
+            catch { return 0; }
+          };
+
+          const incPulse = (id) => {
+            try {
+              const c = getPulseCount(id) + 1;
+              localStorage.setItem(pulseKey(id), String(c));
+            } catch {}
+          };
+
+          const active = [];
+          const normal = [];
+
+          sorted.forEach((item) => {
+            const isActive =
+              item.priority &&
+              item.priority_until &&
+              new Date(item.priority_until).getTime() > now;
+
+            if (isActive && getPulseCount(item.id) < PULSE_MAX) {
+              incPulse(item.id);
+              active.push(item);
+            } else {
+              normal.push(item);
+            }
+          });
+
+          sorted = [...active, ...normal];
+        }
+
+        if (page === 1) {
+          setItems(sorted);
         } else {
-          setItems((prev) => [...prev, ...res.items]);
+          setItems((prev) => [...prev, ...sorted]);
         }
         setTotal(res.totalItems);
       } catch (_) {

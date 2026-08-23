@@ -10,7 +10,13 @@ export const maskPhone = (phone) => {
   return `${clean.slice(0, 3)}****${clean.slice(-2)}`;
 };
 
-const norm = (v) => (v || "").toString().trim().toLowerCase();
+const norm = (v) =>
+  (v || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const nameOverlap = (a, b) => {
   const A = norm(a)
@@ -101,10 +107,11 @@ export const runMatching = async (declaration) => {
   let candidates;
   try {
     candidates = await pb.collection("declarations").getList(1, 200, {
-      filter: `kind = '${opposite}' AND status != 'returned' AND status != 'blocked'`,
+      filter: `kind = '${opposite}' && status != 'returned' && status != 'blocked'`,
       sort: "-created",
     });
-  } catch (_) {
+  } catch (err) {
+    console.error("❌ runMatching candidates fetch failed:", err);
     return [];
   }
 
@@ -113,7 +120,7 @@ export const runMatching = async (declaration) => {
     const lost = declaration.kind === "lost" ? declaration : cand;
     const found = declaration.kind === "lost" ? cand : declaration;
     const { total, breakdown } = scoreMatch(lost, found);
-    if (total < 40) continue;
+    if (total < 25) continue;
     try {
       const rec = await pb.collection("matches").create(
         {
@@ -133,8 +140,8 @@ export const runMatching = async (declaration) => {
       );
       // Notification push + email au propriétaire de la déclaration perdue
       onMatchFound({ ...rec, score: total }, lost, found).catch(() => {});
-    } catch (_) {
-      /* doublon ou table inexistante */
+    } catch (err) {
+      console.error("❌ runMatching match create failed:", err);
     }
   }
 
@@ -151,8 +158,68 @@ export const runMatching = async (declaration) => {
   return created.sort((a, b) => b.score - a.score);
 };
 
+// Ré-exécute le matching sur TOUTES les déclarations existantes
+export const bulkRematch = async (onProgress) => {
+  let allDecls = [];
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const { items } = await pb.collection("declarations").getList(page, perPage, {
+      sort: "-created",
+    });
+    allDecls = [...allDecls, ...items];
+    if (items.length < perPage) break;
+    page++;
+  }
+
+  const losts = allDecls.filter((d) => d.kind === "lost");
+  const founds = allDecls.filter((d) => d.kind === "found");
+
+  let totalCreated = 0;
+  const totalPairs = losts.length * founds.length;
+
+  for (let i = 0; i < losts.length; i++) {
+    for (let j = 0; j < founds.length; j++) {
+      const lost = losts[i];
+      const found = founds[j];
+      const { total, breakdown } = scoreMatch(lost, found);
+      if (total < 25) continue;
+
+      try {
+        const existing = await pb.collection("matches").getFullList({
+          filter: `lost = '${lost.id}' && found = '${found.id}'`,
+        });
+        if (existing.length > 0) continue;
+
+        await pb.collection("matches").create({
+          lost: lost.id,
+          found: found.id,
+          score: total,
+          breakdown,
+          status: "suggested",
+        });
+        totalCreated++;
+
+        // Update statuses
+        await pb.collection("declarations").update(lost.id, { status: "matched" });
+        await pb.collection("declarations").update(found.id, { status: "matched" });
+
+        // Notifications in-app
+        await onMatchFound(
+          { id: crypto.randomUUID(), score: total, lost: lost.id, found: found.id },
+          lost,
+          found
+        ).catch(() => {});
+      } catch (_) {}
+    }
+    if (onProgress) onProgress(i + 1, losts.length, totalCreated);
+  }
+
+  return { total: totalCreated, scanned: allDecls.length };
+};
+
 export const REWARDS = [
-  { label: "Déclarer un objet retrouvé", points: "+10" },
   { label: "Correspondance confirmée", points: "+50" },
   { label: "Restitution confirmée", points: "+100" },
   { label: "Parrainage validé", points: "+20" },

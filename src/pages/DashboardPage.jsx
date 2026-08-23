@@ -377,7 +377,13 @@ const DashboardPage = () => {
     return map;
   }, [pvs]);
 
-  const matchesPaginate = usePaginate(matches);
+  const myDeclIds = useMemo(() => new Set(declarations.map((d) => d.id)), [declarations]);
+  const myMatches = useMemo(
+    () => matches.filter((m) => myDeclIds.has(m.lost) || myDeclIds.has(m.found)),
+    [matches, myDeclIds]
+  );
+
+  const matchesPaginate = usePaginate(myMatches);
   const claimsInPaginate = usePaginate(claimsIn);
   const filteredDeclPaginate = usePaginate(filteredDecls);
   const ledgerPaginate = usePaginate(ledgerWithBalance);
@@ -463,10 +469,13 @@ const DashboardPage = () => {
             <QuickAction to="/declarer/retrouvé" icon={Package} label="Déclarer un objet trouvé" sub="Aider quelqu'un à récupérer son bien" />
             <QuickAction to="/rechercher" icon={Target} label="Rechercher un objet" sub="Parcourir les objets trouvés" />
             <QuickAction to="/recompenses" icon={Banknote} label="Retirer mes gains" sub={`${(user?.points || 0).toLocaleString()} pts → FCFA`} />
+            {myMatches.length > 0 && (
+              <QuickAction to="/mes-correspondances" icon={Handshake} label={`${myMatches.length} correspondance${myMatches.length > 1 ? "s" : ""}`} sub="Voir les objets retrouvés" />
+            )}
           </motion.div>
 
           {/* ── CORRESPONDANCES ── */}
-          <Section title="Correspondances" icon={Handshake} count={matches.length} defaultOpen={matches.length > 0}>
+          <Section title="Correspondances" icon={Handshake} count={myMatches.length} defaultOpen={myMatches.length > 0}>
             {loading ? (
               <div className="space-y-2">
                 {[1, 2].map((i) => (
@@ -479,51 +488,90 @@ const DashboardPage = () => {
               </p>
             ) : (
               <div className="space-y-2">
-                {matchesPaginate.shown.map((m) => (
-                  <motion.div
-                    key={m.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="rounded-2xl border border-border/60 bg-background p-3"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 font-mono text-sm font-extrabold text-primary">
-                        {m.score}%
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold">
-                          {m.expand?.lost?.title} ↔ {m.expand?.found?.title}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground uppercase font-semibold">{m.status}</p>
+                {matchesPaginate.shown.map((m) => {
+                  const bd = m.breakdown || {};
+                  const scoreColor =
+                    m.score >= 80
+                      ? "text-emerald-500 bg-emerald-500/10"
+                      : m.score >= 60
+                      ? "text-primary bg-primary/10"
+                      : m.score >= 40
+                      ? "text-amber-500 bg-amber-500/10"
+                      : "text-muted-foreground bg-muted";
+                  return (
+                    <motion.div
+                      key={m.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="rounded-2xl border border-border/60 bg-background p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl font-mono text-sm font-extrabold ${scoreColor}`}>
+                          {m.score}%
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold">
+                            {m.expand?.lost?.title} ↔ {m.expand?.found?.title}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {bd.ville > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">🏙️ Ville</span>
+                            )}
+                            {bd.zone > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">📍 Quartier</span>
+                            )}
+                            {bd.categorie > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">📁 Catégorie</span>
+                            )}
+                            {bd.identifiant > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">🔢 ID ✓</span>
+                            )}
+                            {bd.nom > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">👤 Nom</span>
+                            )}
+                            {bd.date > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">📅 Date</span>
+                            )}
+                            {bd.description > 0 && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-primary/8 px-1.5 py-0.5 text-[9px] font-bold text-primary">📝 Desc</span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="mt-2.5 flex gap-2">
-                      <Link
-                        to={`/objet/${m.expand?.lost?.owner === user?.id ? m.found : m.lost}`}
-                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
-                      >
-                        Voir
-                      </Link>
-                      {m.status === "suggested" && (
-                        <>
-                          <button
-                            onClick={() => updateMatch(m, "confirmed")}
-                            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground"
-                          >
-                            Confirmer +50
-                          </button>
-                          <button
-                            onClick={() => updateMatch(m, "rejected")}
-                            className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground"
-                          >
-                            Rejeter
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-                <ListFooter {...matchesPaginate} total={matches.length} />
+                      <div className="mt-2.5 flex gap-2">
+                        <Link
+                          to={`/objet/${m.expand?.lost?.owner === user?.id ? m.found : m.lost}`}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
+                        >
+                          Voir
+                        </Link>
+                        <Link
+                          to={`/objet/${m.expand?.lost?.owner === user?.id ? m.lost : m.found}`}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold"
+                        >
+                          Voir l&apos;autre
+                        </Link>
+                        {m.status === "suggested" && (
+                          <>
+                            <button
+                              onClick={() => updateMatch(m, "confirmed")}
+                              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground"
+                            >
+                              Confirmer +50
+                            </button>
+                            <button
+                              onClick={() => updateMatch(m, "rejected")}
+                              className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground"
+                            >
+                              Rejeter
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+                <ListFooter {...matchesPaginate} total={myMatches.length} />
               </div>
             )}
           </Section>

@@ -379,7 +379,7 @@ const AdminBrandingPage = () => {
                         className={field}
                         value={form.sponsor_name}
                         onChange={(e) => set("sponsor_name", e.target.value)}
-                        placeholder="Ex : Orange Sénégal"
+                        placeholder="Ex : Orange Burkina Faso"
                       />
                     </div>
                     <div className="sm:col-span-2">

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
@@ -19,6 +19,7 @@ import { useBranding } from "@/contexts/BrandingContext";
 const NotificationsPage = () => {
   const { user } = useAuth();
   const { branding } = useBranding();
+  const navigate = useNavigate();
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("all");
@@ -180,7 +181,7 @@ const NotificationsPage = () => {
                   <button
                     onClick={() => {
                       markRead(n);
-                      if (n.link) window.location.href = n.link;
+                      if (n.link) navigate(n.link);
                     }}
                     className={`w-full text-left rounded-2xl border p-4 transition-all active:scale-[0.98] ${
                       n.read

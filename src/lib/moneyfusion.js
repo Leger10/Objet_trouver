@@ -4,8 +4,8 @@ import { pb } from "@/lib/supabaseClient";
 const PAYIN_API_URL =
   "https://www.pay.moneyfusion.net/retrounvemoi/98df8c5290593912/pay/";
 const VERIFY_URL = "https://www.pay.moneyfusion.net/paiementNotif";
-const RETURN_URL = "https://retrounvemoi.netlify.app/success";
-const WEBHOOK_URL = "https://retrounvemoi.netlify.app/api/webhook";
+const RETURN_URL = "https://retrouvemoi.netlify.app/success";
+const WEBHOOK_URL = "https://retrouvemoi.netlify.app/api/webhook";
 
 // 3% deposit fee on all incoming payments
 export const DEPOSIT_FEE_RATE = 0.03;
@@ -113,7 +113,7 @@ export const initiateWithdrawal = async ({
   phone,
   amount,
   withdrawMode,
-  countryCode = "ci",
+  countryCode = "bf",
   webhookUrl,
 }) => {
   const res = await fetch("/api/withdraw", {
@@ -125,7 +125,7 @@ export const initiateWithdrawal = async ({
       amount,
       withdraw_mode: withdrawMode,
       webhook_url:
-        webhookUrl || "https://retrounvemoi.netlify.app/api/withdraw-hook",
+        webhookUrl || "https://retrouvemoi.netlify.app/api/withdraw-hook",
     }),
   });
 
@@ -162,10 +162,10 @@ export const createWithdrawalRecord = async ({
 
 // ── Withdrawal mode mapping ────────────────────────────────────────────────
 export const WITHDRAW_MODES = [
-  { key: "Orange Money", mfKey: "orange-money-ci", label: "Orange Money" },
-  { key: "Wave", mfKey: "wave-ci", label: "Wave" },
-  { key: "MTN Mobile Money", mfKey: "mtn-ci", label: "MTN MoMo" },
-  { key: "Moov", mfKey: "moov-ci", label: "Moov Money" },
+  { key: "Orange Money", mfKey: "orange-money-bf", label: "Orange Money" },
+  { key: "Wave", mfKey: "wave-bf", label: "Wave" },
+  { key: "MTN Mobile Money", mfKey: "mtn-bf", label: "MTN MoMo" },
+  { key: "Moov", mfKey: "moov-bf", label: "Moov Money" },
 ];
 
 export const getWithdrawMode = (methodKey) =>

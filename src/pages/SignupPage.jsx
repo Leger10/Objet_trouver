@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, Gift, Star, Users, MailCheck } from 'lucide-react';
+import { Loader2, Gift, Star, Users, MailCheck, Eye, EyeOff } from 'lucide-react';
 import Layout from '@/components/Layout';
 import BrandLogo from '@/components/BrandLogo';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +25,7 @@ const SignupPage = () => {
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
     const [confirmationSent, setConfirmationSent] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         const ref = searchParams.get('ref');
@@ -121,16 +122,21 @@ const SignupPage = () => {
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <label className="flex flex-col gap-2 text-sm font-bold">
                                     Téléphone
-                                    <input className={field} value={form.phone} onChange={set('phone')} placeholder="+225 ..." inputMode="tel" autoComplete="tel" />
+                                    <input className={field} value={form.phone} onChange={set('phone')} placeholder="+226 ..." inputMode="tel" autoComplete="tel" />
                                 </label>
                                 <label className="flex flex-col gap-2 text-sm font-bold">
                                     Ville
-                                    <input className={field} value={form.city} onChange={set('city')} placeholder="Abidjan, Dakar..." autoComplete="address-level2" />
+                                    <input className={field} value={form.city} onChange={set('city')} placeholder="Ouagadougou" autoComplete="address-level2" />
                                 </label>
                             </div>
                             <label className="flex flex-col gap-2 text-sm font-bold">
                                 Mot de passe
-                                <input type="password" required className={field} value={form.password} onChange={set('password')} placeholder="8 caractères minimum" autoComplete="new-password" />
+                                <div className="relative">
+                                    <input type={showPassword ? "text" : "password"} required className={`${field} pr-11`} value={form.password} onChange={set('password')} placeholder="8 caractères minimum" autoComplete="new-password" />
+                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                    </button>
+                                </div>
                             </label>
                             <label className="flex flex-col gap-2 text-sm font-bold">
                                 Code de parrainage <span className="font-normal text-muted-foreground">(optionnel)</span>

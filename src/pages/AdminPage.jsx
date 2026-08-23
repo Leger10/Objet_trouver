@@ -12,6 +12,7 @@ import {
   TYPE_BADGE,
   formatDateTimeFr,
 } from "@/lib/pv";
+import { bulkRematch } from "@/lib/retrouve";
 import BrandLogo from "@/components/BrandLogo";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
@@ -42,6 +43,17 @@ import {
   Building2,
   Activity,
   Smartphone,
+  Zap,
+  Search,
+  Mail,
+  Ban,
+  ShieldCheck,
+  Trash2,
+  Pencil,
+  UserX,
+  UserCheck,
+  X,
+  Send,
 } from "lucide-react";
 
 const ALL_TABS = [
@@ -60,10 +72,11 @@ const ALL_TABS = [
   { key: "pub", label: "Pub", icon: Megaphone },
   { key: "pv", label: "PV", icon: FileText },
   { key: "installations", label: "Installs", icon: Smartphone, mainAdminOnly: true },
+  { key: "support", label: "Support", icon: Mail },
 ];
 
 const AdminPage = () => {
-  const { user, isMainAdmin, adminSetRole, adminResetPassword } = useAuth();
+  const { user, isMainAdmin, adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser } = useAuth();
   const { branding } = useBranding();
   const isAdmin = user?.role === "admin";
   const [tab, setTab] = useState("utilisateurs");
@@ -76,6 +89,7 @@ const AdminPage = () => {
   const [usersList, setUsersList] = useState([]);
   const [roleBusy, setRoleBusy] = useState(null);
   const [resetBusy, setResetBusy] = useState(null);
+  const [rematchBusy, setRematchBusy] = useState(false);
   const [stats, setStats] = useState({
     lost: 0,
     found: 0,
@@ -102,6 +116,7 @@ const AdminPage = () => {
   const [adEvents, setAdEvents] = useState([]);
   const [pvs, setPvs] = useState([]);
   const [installations, setInstallations] = useState([]);
+  const [supportMessages, setSupportMessages] = useState([]);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [loading, setLoading] = useState(true);
@@ -134,7 +149,7 @@ const AdminPage = () => {
         }
       };
 
-      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList, installs] =
+      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList, installs, supMsgs] =
         await Promise.all([
           safeGetList("declarations", 1, 1, { filter: 'kind = "lost"', requestKey: "a1" }),
           safeGetList("declarations", 1, 1, { filter: 'kind = "found"', requestKey: "a2" }),
@@ -152,6 +167,7 @@ const AdminPage = () => {
           safeGetFull("ad_events", { sort: "-created", requestKey: "a14" }),
           safeGetFull("pvs", { sort: "-created", expand: "generated_by,related_declaration", requestKey: "a15" }),
           safeGetFull("app_installations", { sort: "-installed_at", expand: "user", requestKey: "a16" }),
+          safeGetFull("support_messages", { sort: "-created_at", requestKey: "a17" }),
         ]);
 
       let allUsers = [];
@@ -208,6 +224,7 @@ const AdminPage = () => {
       setAdEvents(ads || []);
       setPvs(pvList || []);
       setInstallations(installs || []);
+      setSupportMessages(supMsgs || []);
     } catch (e) {
       console.error("AdminPage load error:", e);
       setDeclarations([]);
@@ -433,6 +450,32 @@ const AdminPage = () => {
           ))}
         </div>
 
+        {/* ── Rematch button ── */}
+        <button
+          type="button"
+          disabled={rematchBusy}
+          onClick={async () => {
+            if (!confirm("Lancer le re-match de toutes les déclarations ? Cela peut prendre quelques minutes.")) return;
+            setRematchBusy(true);
+            try {
+              const result = await bulkRematch();
+              toast.success(`${result.total} nouveaux matchs créés sur ${result.scanned} déclarations`);
+            } catch (err) {
+              toast.error("Erreur: " + (err?.message || "inconnue"));
+            } finally {
+              setRematchBusy(false);
+            }
+          }}
+          className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-amber-500/25 active:scale-[0.98] transition-all disabled:opacity-50"
+        >
+          {rematchBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Zap className="h-4 w-4" />
+          )}
+          {rematchBusy ? "Analyse en cours…" : "Relancer le matching (toutes déclarations)"}
+        </button>
+
         {/* ── Tab bar (horizontal scroll) ── */}
         <div className="-mx-4 px-4 overflow-x-auto scrollbar-none">
           <div className="flex gap-1.5 w-max">
@@ -484,6 +527,11 @@ const AdminPage = () => {
                 setResetBusy={setResetBusy}
                 adminSetRole={adminSetRole}
                 adminResetPassword={adminResetPassword}
+                adminBlockUser={adminBlockUser}
+                adminUnblockUser={adminUnblockUser}
+                adminUpdateUserEmail={adminUpdateUserEmail}
+                adminDeleteUser={adminDeleteUser}
+                refreshUsers={load}
               />
             )}
             {tab === "signalements" && <TabSignalements reports={reports} setReportStatus={setReportStatus} />}
@@ -500,6 +548,7 @@ const AdminPage = () => {
             {tab === "pub" && <TabPub impressions={impressions} clicks={clicks} ctr={ctr} />}
             {tab === "pv" && <TabPV pvs={pvs} />}
             {tab === "installations" && <TabInstallations installations={installations} />}
+            {tab === "support" && <TabSupport supportMessages={supportMessages} setSupportMessages={setSupportMessages} load={load} />}
           </div>
         )}
       </div>
@@ -539,8 +588,51 @@ const AdminPage = () => {
 // TAB COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleBusy, setResetBusy, adminSetRole, adminResetPassword }) {
-  const p = usePaginate(usersList);
+function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleBusy, setResetBusy, adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser, refreshUsers }) {
+  const [search, setSearch] = useState("");
+  const [editEmailTarget, setEditEmailTarget] = useState(null);
+  const [editEmailValue, setEditEmailValue] = useState("");
+  const [editEmailBusy, setEditEmailBusy] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(null);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return usersList;
+    const q = search.toLowerCase();
+    return usersList.filter(
+      (u) =>
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q) ||
+        (u.role || "").toLowerCase().includes(q)
+    );
+  }, [usersList, search]);
+
+  const p = usePaginate(filtered);
+
+  const openEditEmail = (u) => {
+    setEditEmailTarget(u);
+    setEditEmailValue(u.email || "");
+  };
+
+  const saveEmail = async () => {
+    if (!editEmailTarget || !editEmailValue.trim()) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmailValue)) {
+      toast.error("Email invalide");
+      return;
+    }
+    setEditEmailBusy(true);
+    try {
+      await adminUpdateUserEmail(editEmailTarget.id, editEmailValue.trim());
+      toast.success("Email mis à jour", { description: `${editEmailTarget.name || editEmailTarget.email} → ${editEmailValue.trim()}` });
+      setEditEmailTarget(null);
+      refreshUsers();
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setEditEmailBusy(false);
+    }
+  };
+
   return (
     <div>
       {!isMainAdmin && (
@@ -548,23 +640,50 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
           Seul l&apos;administrateur principal peut modifier les rôles.
         </p>
       )}
-      {usersList.length === 0 ? (
+
+      {/* Search */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Rechercher un nom, email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full rounded-xl border border-border bg-card py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
         <EmptyState text="Aucun utilisateur trouvé." />
       ) : (
         <div className="space-y-2">
           {p.shown.map((u) => (
-            <div key={u.id} className="rounded-2xl border border-border bg-card p-3">
+            <div key={u.id} className={`rounded-2xl border bg-card p-3 ${u.blocked ? "border-red-300 opacity-70 dark:border-red-800" : "border-border"}`}>
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-sm truncate">{u.name || "Sans nom"}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-bold text-sm truncate">{u.name || "Sans nom"}</p>
+                    {u.blocked && (
+                      <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-extrabold text-red-600 dark:bg-red-900/40 dark:text-red-400">
+                        BLOQUÉ
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-muted-foreground truncate">{u.email}</p>
                 </div>
                 <span className={`rounded-lg px-2 py-0.5 text-[10px] font-extrabold ${u.role === "admin" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                   {u.role === "admin" ? "Admin" : "User"}
                 </span>
               </div>
+
               {isMainAdmin && u.email !== "digihouse10@gmail.com" && (
-                <div className="mt-2 flex gap-1.5">
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {/* Role toggle */}
                   <button
                     disabled={roleBusy === u.id}
                     onClick={async () => {
@@ -574,9 +693,10 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                         const newRole = u.role === "admin" ? "user" : "admin";
                         await adminSetRole(u.id, newRole);
                         toast.success(`${u.name || u.email} → ${newRole}`);
-                        setRoleBusy(null);
+                        refreshUsers();
                       } catch (e) {
                         toast.error("Erreur", { description: e?.message });
+                      } finally {
                         setRoleBusy(null);
                       }
                     }}
@@ -585,6 +705,8 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                     {roleBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : u.role === "admin" ? <ShieldOff className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
                     {u.role === "admin" ? "Rétrograder" : "Promouvoir"}
                   </button>
+
+                  {/* Reset MDP */}
                   <button
                     disabled={resetBusy === u.id}
                     onClick={async () => {
@@ -593,6 +715,7 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                       try {
                         const msg = await adminResetPassword(u.id);
                         toast.success("MDP réinitialisé", { description: msg });
+                        refreshUsers();
                       } catch (e) {
                         toast.error("Erreur", { description: e?.message });
                       } finally {
@@ -604,11 +727,130 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                     {resetBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
                     Reset MDP
                   </button>
+
+                  {/* Edit email */}
+                  <button
+                    onClick={() => openEditEmail(u)}
+                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Email
+                  </button>
+
+                  {/* Block / Unblock */}
+                  {u.blocked ? (
+                    <button
+                      disabled={blockBusy === u.id}
+                      onClick={async () => {
+                        if (!confirm(`Débloquer ${u.name || u.email} ?`)) return;
+                        setBlockBusy(u.id);
+                        try {
+                          await adminUnblockUser(u.id);
+                          toast.success(`${u.name || u.email} débloqué`);
+                          refreshUsers();
+                        } catch (e) {
+                          toast.error("Erreur", { description: e?.message });
+                        } finally {
+                          setBlockBusy(null);
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded-lg border border-green-300 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-400 disabled:opacity-40"
+                    >
+                      {blockBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
+                      Réactiver
+                    </button>
+                  ) : (
+                    <button
+                      disabled={blockBusy === u.id}
+                      onClick={async () => {
+                        if (!confirm(`Bloquer ${u.name || u.email} ? Il ne pourra plus se connecter.`)) return;
+                        setBlockBusy(u.id);
+                        try {
+                          await adminBlockUser(u.id);
+                          toast.success(`${u.name || u.email} bloqué`);
+                          refreshUsers();
+                        } catch (e) {
+                          toast.error("Erreur", { description: e?.message });
+                        } finally {
+                          setBlockBusy(null);
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded-lg border border-orange-300 bg-orange-50 px-2 py-1 text-[10px] font-bold text-orange-700 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-400 disabled:opacity-40"
+                    >
+                      {blockBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                      Bloquer
+                    </button>
+                  )}
+
+                  {/* Delete */}
+                  <button
+                    disabled={deleteBusy === u.id}
+                    onClick={async () => {
+                      if (!confirm(`⚠️ SUPPRIMER ${u.name || u.email} ? Cette action est irréversible.`)) return;
+                      if (!confirm("Vraiment supprimer ce compte définitivement ?")) return;
+                      setDeleteBusy(u.id);
+                      try {
+                        await adminDeleteUser(u.id);
+                        toast.success(`${u.name || u.email} supprimé`);
+                        refreshUsers();
+                      } catch (e) {
+                        toast.error("Erreur", { description: e?.message });
+                      } finally {
+                        setDeleteBusy(null);
+                      }
+                    }}
+                    className="flex items-center gap-1 rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400 disabled:opacity-40"
+                  >
+                    {deleteBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                    Supprimer
+                  </button>
                 </div>
               )}
             </div>
           ))}
-          <ListFooter {...p} total={usersList.length} />
+          <ListFooter {...p} total={filtered.length} />
+        </div>
+      )}
+
+      {/* Edit Email Modal */}
+      {editEmailTarget && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setEditEmailTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-foreground">Modifier l&apos;email</h3>
+              <button onClick={() => setEditEmailTarget(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Utilisateur : <strong>{editEmailTarget.name || editEmailTarget.email}</strong>
+            </p>
+            <input
+              type="email"
+              value={editEmailValue}
+              onChange={(e) => setEditEmailValue(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && saveEmail()}
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="nouveau@email.com"
+              autoFocus
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setEditEmailTarget(null)}
+                className="flex-1 rounded-xl border border-border px-3 py-2 text-sm font-bold"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveEmail}
+                disabled={editEmailBusy || !editEmailValue.trim()}
+                className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-40"
+              >
+                {editEmailBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Enregistrer
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1288,6 +1530,247 @@ function TabInstallations({ installations }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const SUBJECT_LABELS = {
+  compte_supprime: "Compte supprimé",
+  compte_bloque: "Compte bloqué",
+  mot_de_passe: "Mot de passe",
+  objet: "Objet perdu/retrouvé",
+  point: "Points / Récompenses",
+  signalement: "Signalement",
+  autre: "Autre",
+};
+
+function TabSupport({ supportMessages, setSupportMessages, load }) {
+  const [filter, setFilter] = useState("all");
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [busyId, setBusyId] = useState(null);
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return supportMessages;
+    return supportMessages.filter((m) => m.status === filter);
+  }, [supportMessages, filter]);
+
+  const counts = useMemo(() => {
+    const c = { all: supportMessages.length, new: 0, read: 0, replied: 0, closed: 0 };
+    supportMessages.forEach((m) => { c[m.status] = (c[m.status] || 0) + 1; });
+    return c;
+  }, [supportMessages]);
+
+  const markRead = async (msg) => {
+    if (msg.status !== "new") return;
+    setBusyId(msg.id);
+    try {
+      await pb.collection("support_messages").update(msg.id, { status: "read" });
+      setSupportMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, status: "read" } : m));
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const markClosed = async (msg) => {
+    setBusyId(msg.id);
+    try {
+      await pb.collection("support_messages").update(msg.id, { status: "closed" });
+      setSupportMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, status: "closed" } : m));
+      toast.success("Message clôturé");
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const sendReply = async () => {
+    if (!replyTarget || !replyText.trim()) return;
+    setBusyId(replyTarget.id);
+    try {
+      await pb.collection("support_messages").update(replyTarget.id, {
+        status: "replied",
+        admin_reply: replyText.trim(),
+        replied_at: new Date().toISOString(),
+      });
+      setSupportMessages((prev) => prev.map((m) => m.id === replyTarget.id
+        ? { ...m, status: "replied", admin_reply: replyText.trim(), replied_at: new Date().toISOString() }
+        : m));
+      toast.success("Réponse envoyée");
+      setReplyTarget(null);
+      setReplyText("");
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteMessage = async (msg) => {
+    if (!confirm(`Supprimer le message de ${msg.name} ?`)) return;
+    setBusyId(msg.id);
+    try {
+      await pb.collection("support_messages").delete(msg.id);
+      setSupportMessages((prev) => prev.filter((m) => m.id !== msg.id));
+      toast.success("Message supprimé");
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const statusColor = (s) => {
+    if (s === "new") return "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
+    if (s === "read") return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300";
+    if (s === "replied") return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300";
+    return "bg-muted text-muted-foreground";
+  };
+
+  const statusLabel = { new: "Nouveau", read: "Lu", replied: "Répondu", closed: "Clôturé" };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-lg font-extrabold flex items-center gap-2">
+          <Mail className="h-5 w-5" /> Messages de support
+          <span className="ml-2 text-sm font-bold text-muted-foreground">({counts.all})</span>
+        </h2>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {["all", "new", "read", "replied", "closed"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${filter === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+          >
+            {f === "all" ? "Tous" : statusLabel[f]} ({counts[f] || 0})
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground text-sm">
+          Aucun message{filter !== "all" ? ` avec statut « ${statusLabel[filter]} »` : ""}.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((msg) => (
+            <div
+              key={msg.id}
+              className={`rounded-xl border bg-card p-4 shadow-sm transition ${msg.status === "new" ? "border-blue-300 dark:border-blue-700" : "border-border"}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${statusColor(msg.status)}`}>
+                      {statusLabel[msg.status] || msg.status}
+                    </span>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-secondary-foreground">
+                      {SUBJECT_LABELS[msg.subject] || msg.subject}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(msg.created_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <p className="font-bold text-sm">{msg.name}</p>
+                  <p className="text-xs text-muted-foreground">{msg.email}{msg.phone ? ` · ${msg.phone}` : ""}</p>
+                  <p className="mt-2 text-sm whitespace-pre-wrap">{msg.message}</p>
+
+                  {msg.admin_reply && (
+                    <div className="mt-3 rounded-lg bg-primary/5 border border-primary/20 p-3">
+                      <p className="text-[10px] font-bold uppercase text-primary mb-1">
+                        Réponse admin · {msg.replied_at ? new Date(msg.replied_at).toLocaleDateString("fr-FR") : ""}
+                      </p>
+                      <p className="text-sm whitespace-pre-wrap">{msg.admin_reply}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5 shrink-0">
+                  {msg.status === "new" && (
+                    <button
+                      onClick={() => markRead(msg)}
+                      disabled={busyId === msg.id}
+                      className="rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[10px] font-bold text-yellow-600 hover:bg-yellow-500/20 transition"
+                    >
+                      Marquer lu
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setReplyTarget(msg); setReplyText(msg.admin_reply || ""); }}
+                    className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition"
+                  >
+                    {msg.admin_reply ? "Modifier" : "Répondre"}
+                  </button>
+                  {msg.status !== "closed" && (
+                    <button
+                      onClick={() => markClosed(msg)}
+                      disabled={busyId === msg.id}
+                      className="rounded-lg bg-muted px-2.5 py-1.5 text-[10px] font-bold text-muted-foreground hover:bg-muted/80 transition"
+                    >
+                      Clôturer
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteMessage(msg)}
+                    disabled={busyId === msg.id}
+                    className="rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[10px] font-bold text-destructive hover:bg-destructive/20 transition"
+                  >
+                    <Trash2 className="h-3 w-3 inline mr-0.5" />
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reply modal */}
+      {replyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setReplyTarget(null)}>
+          <div className="w-full max-w-lg rounded-2xl bg-card border border-border p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-extrabold text-lg">Répondre à {replyTarget.name}</h3>
+              <button onClick={() => setReplyTarget(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">{replyTarget.email} · {SUBJECT_LABELS[replyTarget.subject]}</p>
+            <div className="rounded-lg bg-muted/50 p-3 mb-3">
+              <p className="text-sm whitespace-pre-wrap">{replyTarget.message}</p>
+            </div>
+            <textarea
+              className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30 min-h-[100px] resize-y"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Votre réponse..."
+              rows={4}
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setReplyTarget(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold bg-muted text-muted-foreground hover:bg-muted/80 transition"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={sendReply}
+                disabled={busyId === replyTarget.id || !replyText.trim()}
+                className="rounded-xl px-4 py-2 text-sm font-bold bg-primary text-primary-foreground shadow hover:opacity-90 transition disabled:opacity-50"
+              >
+                {busyId === replyTarget.id ? <Loader2 className="h-4 w-4 animate-spin inline mr-1" /> : <Send className="h-4 w-4 inline mr-1" />}
+                Envoyer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

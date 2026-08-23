@@ -12,6 +12,7 @@ import {
   MapPin,
   Phone,
   Rocket,
+  Sparkles,
   Tag,
 } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
@@ -21,9 +22,11 @@ import { useBranding } from "@/contexts/BrandingContext";
 import { runMatching } from "@/lib/retrouve";
 import { onDeclarationCreated } from "@/lib/notificationService";
 import CategoryGrid from "@/components/CategoryGrid";
+import MatchVerifyPopup from "@/components/MatchVerifyPopup";
 import { CATEGORY_GROUPS, CATEGORY_META } from "@/lib/categories";
 import { formatNumber } from "@/lib/format";
 import { initPayment, computeTotalWithFee, computeFee } from "@/lib/moneyfusion";
+import { detectDocument } from "@/lib/documentDetector";
 
 const field =
   "w-full rounded-xl border-2 border-input bg-background px-4 py-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground/50";
@@ -51,8 +54,6 @@ const DeclarePage = () => {
     event_date: "",
     description: "",
     doc_number: "",
-    security_question: "",
-    security_answer: "",
     phone: "",
     priority: false,
   });
@@ -62,6 +63,7 @@ const DeclarePage = () => {
   const [saving, setSaving] = useState(false);
   const [paying, setPaying] = useState(false);
   const [result, setResult] = useState(null);
+  const [showMatchPopup, setShowMatchPopup] = useState(false);
 
   useEffect(() => {
     pb.collection("categories")
@@ -136,10 +138,8 @@ const DeclarePage = () => {
         event_date: form.event_date || null,
         description: form.description,
         doc_last4: digits ? digits.slice(-4) : "",
-        security_question: form.security_question,
-        security_answer: form.security_answer,
         status: "open",
-        priority: form.priority,
+        priority: false,
         owner: user.id,
         phone: form.phone,
       };
@@ -155,6 +155,13 @@ const DeclarePage = () => {
             .from("uploads")
             .getPublicUrl(uploaded.path);
           payload.photo_url = urlData?.publicUrl || "";
+        }
+        try {
+          const detection = await detectDocument(photo);
+          payload.is_document_photo = detection.isDocument;
+          payload.doc_photo_type = detection.docType || "";
+        } catch (_) {
+          payload.is_document_photo = false;
         }
       }
 
@@ -204,9 +211,12 @@ const DeclarePage = () => {
       onDeclarationCreated({ ...rec, category: form.category }, user).catch(() => {});
       toast.success(
         kind === "lost" ? "Perte enregistrée" : "Objet retrouvé enregistré",
-        { description: kind === "found" ? "+10 points crédités" : undefined }
+        { description: kind === "found" ? "Les points seront attribués après restitution" : undefined }
       );
       setResult({ rec, matches });
+      if (matches.length > 0) {
+        setShowMatchPopup(true);
+      }
     } catch (err) {
       console.error("Erreur déclaration:", err);
       setError(
@@ -220,67 +230,79 @@ const DeclarePage = () => {
   };
 
   if (result) {
+    const isFound = kind === "found";
     return (
-      <Layout>
-        <Helmet>
-          <title>Déclaration enregistrée — {branding.app_name}</title>
-        </Helmet>
-        <div className="mx-auto w-full max-w-lg px-4 py-10">
-          <div className={`${card} text-center`}>
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent/10">
-              <CheckCircle2 className="h-8 w-8 text-accent" />
-            </div>
-            <h1 className="mt-4 text-xl font-extrabold">Déclaration enregistrée</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Elle est comparée en continu à toute la base.
-            </p>
-
-            {form.priority && (
-              <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 dark:border-orange-800/30 dark:bg-orange-900/20">
-                <p className="text-sm font-bold text-orange-700 dark:text-orange-300">
-                  Mise en avant active — Paiement en cours
-                </p>
-                <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-                  500 FCFA via MoneyFusion
-                </p>
+      <>
+        <MatchVerifyPopup
+          isOpen={showMatchPopup}
+          onClose={() => setShowMatchPopup(false)}
+          matches={result.matches}
+          declaration={{ ...result.rec, category: form.category }}
+          kind={kind}
+        />
+        <Layout>
+          <Helmet>
+            <title>Déclaration enregistrée — {branding.app_name}</title>
+          </Helmet>
+          <div className="mx-auto w-full max-w-lg px-4 py-10">
+            <div className={`${card} text-center`}>
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-accent/10">
+                <CheckCircle2 className="h-8 w-8 text-accent" />
               </div>
-            )}
+              <h1 className="mt-4 text-xl font-extrabold">Déclaration enregistrée</h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Elle est comparée en continu à toute la base.
+              </p>
 
-            {result.matches.length > 0 && (
-              <div className="mt-4 rounded-xl bg-primary/5 p-3 text-left">
-                <p className="text-sm font-bold text-primary">
-                  {result.matches.length} correspondance(s) trouvée(s)
-                </p>
-                <ul className="mt-2 space-y-1.5">
-                  {result.matches.slice(0, 3).map((m) => (
-                    <li key={m.id} className="flex items-center justify-between text-sm">
-                      <span className="truncate">{m.other?.title}</span>
-                      <span className="ml-2 shrink-0 font-mono font-bold text-primary">
-                        {m.score}%
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              {result.matches.length > 0 && !showMatchPopup && (
+                <button
+                  type="button"
+                  onClick={() => setShowMatchPopup(true)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-600 dark:text-emerald-400"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {result.matches.length} correspondance(s) — Voir les résultats
+                </button>
+              )}
+
+              {isFound && result.matches.length === 0 && (
+                <div className="mt-4 rounded-xl border border-dashed border-border/60 bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">
+                    Aucune correspondance immédiate. Le système continue de
+                    comparer votre déclaration avec les objets perdus.
+                  </p>
+                </div>
+              )}
+
+              {!isFound && result.matches.length > 0 && (
+                <div className="mt-4 rounded-xl bg-amber-500/10 p-4 text-left">
+                  <p className="text-sm font-bold text-amber-700 dark:text-amber-300">
+                    🎉 Un objet correspondant a été trouvé !
+                  </p>
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Consultez les détails dans votre tableau de bord.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-6 grid grid-cols-2 gap-2">
+                <Link
+                  to="/tableau-de-bord"
+                  className="rounded-xl bg-primary px-4 py-3 text-center text-sm font-bold text-primary-foreground"
+                >
+                  Mon espace
+                </Link>
+                <Link
+                  to="/"
+                  className="rounded-xl border border-border px-4 py-3 text-center text-sm font-bold"
+                >
+                  Accueil
+                </Link>
               </div>
-            )}
-
-            <div className="mt-6 grid grid-cols-2 gap-2">
-              <Link
-                to="/tableau-de-bord"
-                className="rounded-xl bg-primary px-4 py-3 text-center text-sm font-bold text-primary-foreground"
-              >
-                Mon espace
-              </Link>
-              <Link
-                to="/"
-                className="rounded-xl border border-border px-4 py-3 text-center text-sm font-bold"
-              >
-                Accueil
-              </Link>
             </div>
           </div>
-        </div>
-      </Layout>
+        </Layout>
+      </>
     );
   }
 
@@ -345,7 +367,7 @@ const DeclarePage = () => {
         <div className="mt-1.5 flex justify-between text-[10px] font-bold text-muted-foreground">
           <span>Objet</span>
           <span>Lieu</span>
-          <span>Sécurité</span>
+          <span>Options</span>
         </div>
 
         <form onSubmit={submit}>
@@ -392,7 +414,7 @@ const DeclarePage = () => {
                     placeholder={
                       kind === "lost"
                         ? "Ex : CNI au nom de Aïcha Diallo"
-                        : "Ex : Portefeuille noir trouvé à Adjamé"
+                        : "Ex : Portefeuille noir trouvé à Ouaga 2000"
                     }
                   />
                 </label>
@@ -488,7 +510,7 @@ const DeclarePage = () => {
                       className={field}
                       value={form.city}
                       onChange={set("city")}
-                      placeholder="Ex : Abidjan"
+                      placeholder="Ex : Ouagadougou"
                     />
                   </label>
                   <label className={labelCls}>
@@ -497,7 +519,7 @@ const DeclarePage = () => {
                       className={field}
                       value={form.zone}
                       onChange={set("zone")}
-                      placeholder="Ex : Yopougon"
+                      placeholder="Ex : Ouaga 2000"
                     />
                   </label>
                   <label className={labelCls}>
@@ -523,7 +545,7 @@ const DeclarePage = () => {
                     className={field}
                     value={form.phone}
                     onChange={set("phone")}
-                    placeholder="+225 07 08 09 10"
+                    placeholder="+226 01 01 01 01"
                     type="tel"
                   />
                 </label>
@@ -546,7 +568,7 @@ const DeclarePage = () => {
                     value={form.doc_number}
                     onChange={set("doc_number")}
                     inputMode="text"
-                    placeholder="Ex : C0198234821"
+                    placeholder="Ex : BF0012345678"
                   />
                 </label>
               </div>
@@ -571,40 +593,10 @@ const DeclarePage = () => {
             </div>
           )}
 
-          {/* ══════ ÉTAPE 3 : Sécurité & Mise en avant ══════ */}
+          {/* ══════ ÉTAPE 3 : Options & finalisation ══════ */}
           {step === 3 && (
             <div className="mt-6 grid gap-4 animate-fade-in">
-              <h2 className="text-lg font-extrabold">Sécurité & options</h2>
-
-              {/* Question de sécurité */}
-              <div className={card}>
-                <p className={sectionTitle}>
-                  <Lock className="h-4 w-4 text-primary" /> Vérification
-                </p>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Une question que seule la vraie propriétaire peut répondre.
-                </p>
-                <div className="mt-3 grid gap-3">
-                  <label className={labelCls}>
-                    <span className="text-xs text-muted-foreground">Question</span>
-                    <input
-                      className={field}
-                      value={form.security_question}
-                      onChange={set("security_question")}
-                      placeholder="Ex : Que contenait le sac ?"
-                    />
-                  </label>
-                  <label className={labelCls}>
-                    <span className="text-xs text-muted-foreground">Réponse (jamais publique)</span>
-                    <input
-                      className={field}
-                      value={form.security_answer}
-                      onChange={set("security_answer")}
-                      placeholder="Réponse secrète"
-                    />
-                  </label>
-                </div>
-              </div>
+              <h2 className="text-lg font-extrabold">Options & finalisation</h2>
 
               {/* ── MISE EN AVANT ── */}
               <div

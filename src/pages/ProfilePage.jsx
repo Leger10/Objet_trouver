@@ -30,7 +30,7 @@ const ProfilePage = () => {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({ name: "", phone: "", city: "" });
+  const [profileForm, setProfileForm] = useState({ name: "", phone: "", city: "", quarter: "" });
   const [profileMsg, setProfileMsg] = useState({ type: "", text: "" });
 
   if (!isAuthed || !user) {
@@ -126,10 +126,19 @@ const ProfilePage = () => {
               <p className="truncate text-lg font-extrabold">
                 {user?.name || user?.email}
               </p>
-              <p className="truncate text-sm text-white/75">{user?.email}</p>
-              {user?.city && (
-                <p className="mt-0.5 text-xs text-white/60">{user.city}</p>
-              )}
+              {/* <p className="truncate text-sm text-white/75">{user?.email}</p> */}
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                {user?.city && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-bold text-white/80">
+                    {user.city}
+                  </span>
+                )}
+                {user?.quarter && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-bold text-white/80">
+                    {user.quarter}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -239,6 +248,7 @@ const ProfilePage = () => {
                   name: user?.name || "",
                   phone: user?.phone || "",
                   city: user?.city || "",
+                  quarter: user?.quarter || "",
                 });
                 setProfileMsg({ type: "", text: "" });
               }
@@ -268,7 +278,7 @@ const ProfilePage = () => {
                   className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
                   value={profileForm.phone}
                   onChange={(e) => setProfileForm((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="+225 ..."
+                  placeholder="+226 ..."
                   inputMode="tel"
                 />
               </label>
@@ -278,9 +288,23 @@ const ProfilePage = () => {
                   className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
                   value={profileForm.city}
                   onChange={(e) => setProfileForm((f) => ({ ...f, city: e.target.value }))}
-                  placeholder="Abidjan, Dakar..."
+                  placeholder="Ouagadougou"
                 />
               </label>
+              {user?.role === "admin" && (
+                <label className="flex flex-col gap-1.5 text-sm font-bold">
+                  Quartier / Zone
+                  <input
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
+                    value={profileForm.quarter}
+                    onChange={(e) => setProfileForm((f) => ({ ...f, quarter: e.target.value }))}
+                    placeholder="Ex: ARPALLA, Tampouy, Karpala..."
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Utilisé pour diriger les déposants vers vous
+                  </span>
+                </label>
+              )}
               {profileMsg.text && (
                 <p className={`rounded-xl px-3 py-2 text-xs font-semibold ${profileMsg.type === "error" ? "bg-destructive/10 text-destructive" : "bg-green-500/10 text-green-600 dark:bg-green-400/10 dark:text-green-400"}`}>
                   {profileMsg.text}
@@ -297,6 +321,7 @@ const ProfilePage = () => {
                       name: profileForm.name,
                       phone: profileForm.phone,
                       city: profileForm.city,
+                      quarter: profileForm.quarter,
                     });
                     setProfileMsg({ type: "success", text: "Profil mis à jour !" });
                     setTimeout(() => setEditing(false), 1500);

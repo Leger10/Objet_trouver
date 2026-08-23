@@ -2,8 +2,7 @@
 
 /** Default RetrouveMoi branding — also used as reset baseline. */
 
-export const LOGO_URL =
-    'https://horizons-cdn.hostinger.com/e776e53a-2e8c-4679-82db-bb8e8b1bc86d/1ba5c4215809aaa0ea7d6e0cce3932d3.png';
+export const LOGO_URL = '/images/icon-192.png';
 
 export const DEFAULT_HERO =
     'https://images.hostinger.com/1d7b56f8-ae12-42ac-9369-50d15f8f42a1.png';

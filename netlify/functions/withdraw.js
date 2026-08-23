@@ -44,7 +44,7 @@ exports.handler = async (event) => {
         phone,
         amount,
         withdraw_mode,
-        webhook_url: webhook_url || "https://retrounvemoi.netlify.app/api/withdraw-hook",
+        webhook_url: webhook_url || "https://retrouvemoi.netlify.app/api/withdraw-hook",
       }),
     });
 

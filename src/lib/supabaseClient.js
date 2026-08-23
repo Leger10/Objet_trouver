@@ -401,6 +401,15 @@ class SupabaseCollection {
             case '~':
               query = query.ilike(field, `%${cond.value}%`);
               break;
+            case '>=':
+              query = query.gte(field, cond.value);
+              break;
+            case '<=':
+              query = query.lte(field, cond.value);
+              break;
+            case '!=':
+              query = query.neq(field, cond.value);
+              break;
             default:
               break;
           }

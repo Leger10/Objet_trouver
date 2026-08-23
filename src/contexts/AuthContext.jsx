@@ -83,7 +83,14 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user && mounted) {
-          await buildUser(session.user);
+          const merged = await buildUser(session.user);
+          if (merged?.blocked) {
+            await pb.authLogout();
+            setUser(null);
+            setIsAuthed(false);
+            localStorage.setItem('auth_block_reason', 'Votre compte a été bloqué par l\'administrateur.');
+            return;
+          }
           pb.authStore.record = session.user;
           pb.authStore.token = session.access_token;
           pb.authStore.isAuth = true;
@@ -99,11 +106,14 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session?.user) {
-          await buildUser(session.user);
-          pb.authStore.record = session.user;
-          pb.authStore.token = session.access_token;
-          pb.authStore.isAuth = true;
-        } else if (event === 'SIGNED_OUT') {
+          const merged = await buildUser(session.user);
+          if (merged?.blocked) {
+            await pb.authLogout();
+            setUser(null);
+            setIsAuthed(false);
+            localStorage.setItem('auth_block_reason', 'Votre compte a été bloqué par l\'administrateur.');
+            return;
+          }
           setUser(null);
           setIsAuthed(false);
           pb.authStore.record = null;
@@ -121,7 +131,13 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const data = await pb.authWithPassword(email, password);
-    await buildUser(data.user);
+    const merged = await buildUser(data.user);
+    if (merged?.blocked) {
+      await pb.authLogout();
+      setUser(null);
+      setIsAuthed(false);
+      throw new Error("Votre compte a été bloqué par l'administrateur. Contactez le support.");
+    }
     return data;
   };
 
@@ -181,7 +197,12 @@ export const AuthProvider = ({ children }) => {
     if (!user?.id) throw new Error("Non connecté");
     const { error } = await supabase
       .from('users')
-      .update({ name: updates.name, phone: updates.phone, city: updates.city })
+      .update({
+        name: updates.name,
+        phone: updates.phone,
+        city: updates.city,
+        quarter: updates.quarter ?? user.quarter ?? '',
+      })
       .eq('id', user.id);
     if (error) throw error;
     await refreshUser();
@@ -211,12 +232,45 @@ export const AuthProvider = ({ children }) => {
     return "Mot de passe réinitialisé à 00000000";
   };
 
+  const adminBlockUser = async (targetUserId) => {
+    if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut bloquer un utilisateur");
+    const { error } = await supabase.rpc('admin_block_user', {
+      target_id: targetUserId,
+    });
+    if (error) throw error;
+  };
+
+  const adminUnblockUser = async (targetUserId) => {
+    if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut débloquer un utilisateur");
+    const { error } = await supabase.rpc('admin_unblock_user', {
+      target_id: targetUserId,
+    });
+    if (error) throw error;
+  };
+
+  const adminUpdateUserEmail = async (targetUserId, newEmail) => {
+    if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut modifier les emails");
+    const { error } = await supabase.rpc('admin_update_user_email', {
+      target_id: targetUserId,
+      new_email: newEmail,
+    });
+    if (error) throw error;
+  };
+
+  const adminDeleteUser = async (targetUserId) => {
+    if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut supprimer un utilisateur");
+    const { error } = await supabase.rpc('admin_delete_user', {
+      target_id: targetUserId,
+    });
+    if (error) throw error;
+  };
+
   const value = {
     user, isAuthed, loading,
     isAdmin, isMainAdmin,
     login, signup, logout,
     forgotPassword, resetPassword, updateProfile, refreshUser,
-    adminSetRole, adminResetPassword,
+    adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser,
   };
 
   return (
