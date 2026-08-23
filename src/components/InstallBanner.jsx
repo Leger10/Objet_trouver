@@ -1,14 +1,10 @@
+// components/InstallBanner.jsx
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Smartphone } from "lucide-react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 import { useBranding } from "@/contexts/BrandingContext";
 
-/**
- * PWA install banner shown on HomePage and DashboardPage.
- * Displays logo, app name, and install button.
- * Tracks installation in Supabase for admin visibility.
- */
 export default function InstallBanner() {
   const { isInstalled, canInstall, install, dismiss } = useInstallPrompt();
   const { branding } = useBranding();
@@ -22,7 +18,6 @@ export default function InstallBanner() {
     const ok = await install();
     setInstalling(false);
     if (ok) {
-      // Track installation server-side via Supabase
       try {
         const { supabase } = await import("@/lib/supabaseClient");
         const { data: { user } } = await supabase.auth.getUser();
@@ -41,7 +36,6 @@ export default function InstallBanner() {
     setDismissed(true);
   };
 
-  // iOS has no beforeinstallprompt — show manual instructions
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const isMacOS = /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
 
@@ -54,7 +48,6 @@ export default function InstallBanner() {
         className="mx-4 mb-3"
       >
         <div className="relative rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-accent/10 p-4 shadow-sm">
-          {/* Close */}
           <button
             onClick={handleDismiss}
             className="absolute top-2 right-2 rounded-full p-1 text-muted-foreground hover:bg-muted"
@@ -63,7 +56,6 @@ export default function InstallBanner() {
           </button>
 
           <div className="flex items-start gap-3">
-            {/* Logo */}
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 shadow-inner">
               <img
                 src={branding?.logo_url}

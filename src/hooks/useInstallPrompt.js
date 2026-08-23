@@ -1,22 +1,17 @@
+// hooks/useInstallPrompt.js
 import { useState, useEffect } from "react";
 
-/**
- * Hook to detect PWA install capability and handle install prompt.
- * Works on Android/Chrome, iOS has no beforeinstallprompt so we detect standalone mode.
- */
 export function useInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
 
   useEffect(() => {
-    // Already running as standalone (installed)
     if (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true) {
       setIsInstalled(true);
       return;
     }
 
-    // Already dismissed permanently
     if (localStorage.getItem("pwa_install_dismissed") === "1") {
       setIsInstalled(true);
       return;
@@ -40,7 +35,7 @@ export function useInstallPrompt() {
         await supabase.from("app_installations").insert({
           user: user?.id || null,
           user_agent: navigator.userAgent,
-          platform: /Android/i.test(navigator.userAgent) ? "Android" : /iPad|iPhone|iPod/.test(navigator.userAgent) ? "iOS" : /Macintosh/.test(navigator.userAgent) ? "macOS" : /Windows/.test(navigator.userAgent) ? "Windows" : "unknown",
+          platform: detectPlatform(),
           installed_at: new Date().toISOString(),
         });
       } catch (_) {}
@@ -69,4 +64,14 @@ export function useInstallPrompt() {
   };
 
   return { isInstalled, canInstall, install, dismiss };
+}
+
+function detectPlatform() {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) return "Android";
+  if (/iPad|iPhone|iPod/.test(ua)) return "iOS";
+  if (/Macintosh/.test(ua)) return "macOS";
+  if (/Windows/.test(ua)) return "Windows";
+  if (/Linux/.test(ua)) return "Linux";
+  return "unknown";
 }

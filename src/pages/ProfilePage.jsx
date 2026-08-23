@@ -11,10 +11,13 @@ import {
   Crown,
   Gift,
   KeyRound,
+  Link2,
   Loader2,
   LogOut,
+  MessageCircle,
   Save,
   Settings,
+  Share2,
   ShieldCheck,
   Sparkles,
   Trophy,
@@ -28,6 +31,7 @@ const ProfilePage = () => {
   const { user, isAuthed, logout, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ name: "", phone: "", city: "", quarter: "" });
@@ -90,6 +94,34 @@ const ProfilePage = () => {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
+  };
+
+  const copyLink = () => {
+    if (navigator.clipboard && referralLink) {
+      navigator.clipboard.writeText(referralLink).catch(() => {});
+    }
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2500);
+  };
+
+  const shareText = `Inscris-toi sur RetrouveMoi avec mon code ${user?.referral_code || ""} et gagne des points ! 🎯`;
+
+  const handleNativeShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: "RetrouveMoi", text: shareText, url: referralLink }).catch(() => {});
+    }
+  };
+
+  const shareWhatsApp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText + "\n" + referralLink)}`, "_blank");
+  };
+
+  const shareFacebook = () => {
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}&quote=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
+  const shareTelegram = () => {
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`, "_blank");
   };
 
   const menu = [
@@ -205,9 +237,56 @@ const ProfilePage = () => {
             <span className="font-bold text-primary">+20 points</span>.
           </p>
           {referralLink && (
-            <p className="mt-2 truncate rounded-lg bg-muted px-3 py-2 text-xs font-mono text-muted-foreground">
-              {referralLink}
-            </p>
+            <>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="flex-1 truncate rounded-lg bg-muted px-3 py-2 text-xs font-mono text-muted-foreground">
+                  {referralLink}
+                </span>
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-white active:scale-95 transition-transform"
+                  aria-label="Copier le lien"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {linkCopied && (
+                <p className="mt-1 text-xs font-semibold text-accent">Lien copié !</p>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={shareWhatsApp}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2.5 text-xs font-bold text-white active:scale-95 transition-transform"
+                >
+                  <MessageCircle className="h-4 w-4" /> WhatsApp
+                </button>
+                <button
+                  type="button"
+                  onClick={shareFacebook}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#1877F2] px-3 py-2.5 text-xs font-bold text-white active:scale-95 transition-transform"
+                >
+                  Facebook
+                </button>
+                <button
+                  type="button"
+                  onClick={shareTelegram}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[#0088CC] px-3 py-2.5 text-xs font-bold text-white active:scale-95 transition-transform"
+                >
+                  Telegram
+                </button>
+              </div>
+              {navigator.share && (
+                <button
+                  type="button"
+                  onClick={handleNativeShare}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform"
+                >
+                  <Share2 className="h-4 w-4" /> Partager...
+                </button>
+              )}
+            </>
           )}
         </div>
 

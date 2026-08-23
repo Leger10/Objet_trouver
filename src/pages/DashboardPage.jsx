@@ -11,6 +11,9 @@ import {
   Coins,
   Gift,
   Handshake,
+  Link2,
+  MessageCircle,
+  Share2,
   ShieldCheck,
   Users,
   ShoppingBag,
@@ -317,6 +320,26 @@ const DashboardPage = () => {
     }
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const shareText = `Inscris-toi sur RetrouveMoi avec mon code ${user?.referral_code || ""} et gagne des points ! 🎯`;
+
+  const shareWhatsApp = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText + "\n" + referralLink)}`, "_blank");
+  };
+
+  const shareFacebook = () => {
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(referralLink)}&quote=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
+  const shareTelegram = () => {
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent(shareText)}`, "_blank");
+  };
+
+  const handleNativeShare = () => {
+    if (navigator.share) {
+      navigator.share({ title: "RetrouveMoi", text: shareText, url: referralLink }).catch(() => {});
+    }
   };
 
   const monthStart = useMemo(() => {
@@ -767,10 +790,7 @@ const DashboardPage = () => {
                 <span className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-sm font-extrabold tracking-wider">
                   {user?.referral_code || "—"}
                 </span>
-                <button
-                  onClick={copyCode}
-                  className="rounded-lg bg-primary p-2.5 text-white active:scale-95"
-                >
+                <button onClick={copyCode} className="rounded-lg bg-primary p-2.5 text-white active:scale-95">
                   <Copy className="h-4 w-4" />
                 </button>
               </div>
@@ -778,6 +798,35 @@ const DashboardPage = () => {
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Partagez ce lien. Chaque inscription vous rapporte <span className="font-bold text-primary">+20 points</span>.
               </p>
+              {referralLink && (
+                <>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="flex-1 truncate rounded-lg bg-background px-3 py-2 text-[11px] font-mono text-muted-foreground">
+                      {referralLink}
+                    </span>
+                    <button onClick={copyLink} className="rounded-lg bg-primary p-2 text-white active:scale-95" aria-label="Copier le lien">
+                      <Link2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {copiedLink && <p className="mt-1 text-xs font-bold text-accent">Lien copié !</p>}
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={shareWhatsApp} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-[#25D366] px-2 py-2 text-[11px] font-bold text-white active:scale-95">
+                      <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                    </button>
+                    <button onClick={shareFacebook} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-[#1877F2] px-2 py-2 text-[11px] font-bold text-white active:scale-95">
+                      Facebook
+                    </button>
+                    <button onClick={shareTelegram} className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-[#0088CC] px-2 py-2 text-[11px] font-bold text-white active:scale-95">
+                      Telegram
+                    </button>
+                  </div>
+                  {navigator.share && (
+                    <button onClick={handleNativeShare} className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-border px-2 py-2 text-[11px] font-bold active:scale-95">
+                      <Share2 className="h-3.5 w-3.5" /> Partager...
+                    </button>
+                  )}
+                </>
+              )}
             </div>
             {referrals.length > 0 && (
               <div className="mt-2 space-y-1">

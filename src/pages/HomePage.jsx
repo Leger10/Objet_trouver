@@ -83,10 +83,11 @@ const HomePage = () => {
         found: get(1, { totalItems: 0 }).totalItems || 0,
         returned: get(2, { totalItems: 0 }).totalItems || 0,
       });
+      setCategories(get(3, []));
       setCatCounts(get(4, {}));
 
-      const dbCats = get(3, []);
-      if (dbCats.length === 0) {
+      // Fallback: generate categories from static meta if DB table is empty/missing
+      if (get(3, []).length === 0) {
         const fallback = CATEGORY_GROUPS.flatMap((g) =>
           g.slugs.map((slug, pos) => ({
             id: slug,
@@ -96,19 +97,6 @@ const HomePage = () => {
           }))
         );
         setCategories(fallback);
-      } else {
-        const dbSlugs = new Set(dbCats.map((c) => c.slug || c.id));
-        const localMissing = CATEGORY_GROUPS.flatMap((g) =>
-          g.slugs
-            .filter((s) => !dbSlugs.has(s))
-            .map((slug, i) => ({
-              id: slug,
-              slug,
-              name: CATEGORY_META[slug]?.label || slug,
-              position: (dbCats.length || 0) + i,
-            }))
-        );
-        setCategories([...dbCats, ...localMissing]);
       }
     } catch (_) {
       setStats({ lost: 0, found: 0, returned: 0 });
