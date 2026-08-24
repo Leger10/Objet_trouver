@@ -1,4 +1,4 @@
-const CACHE_NAME = "retrouvemoi-v1";
+const CACHE_NAME = "retrouvemoi-v2";
 const PRECACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {
@@ -16,8 +16,29 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
+  const { request } = e;
+  if (request.method !== "GET") return;
+
+  // Laisser passer Supabase / CDN sans interception (évite les réponses opaques cassées)
+  if (!request.url.startsWith(self.location.origin)) return;
+
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+    fetch(request)
+      .then((response) => {
+        if (response && response.ok && response.type === "basic") {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(request, clone)).catch(() => {});
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        if (request.mode === "navigate") {
+          const index = await caches.match("/index.html");
+          if (index) return index;
+        }
+        return new Response("", { status: 503, statusText: "Offline" });
+      })
   );
 });

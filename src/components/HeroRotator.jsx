@@ -13,6 +13,15 @@ const resolveHeroImage = (h) => {
   return DEFAULT_HERO;
 };
 
+// Précharge une image ; résout vite même si elle met du temps
+const preloadImage = (src) =>
+  new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+
 const HERO_ANIMATIONS = [
   {
     initial: { opacity: 0, scale: 1.04 },
@@ -36,10 +45,13 @@ const HERO_ANIMATIONS = [
   },
 ];
 
+const SLIDE_MS = 6000;
+
 const HeroRotator = ({ fallbackImage, children, className = "" }) => {
   const [images, setImages] = useState([]);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const readyRef = useRef(new Set());
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -49,30 +61,44 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
         const data = await pb
           .collection("hero_images")
           .getFullList({ sort: "position", filter: "active = true" });
-        if (alive && data && data.length > 0) {
-          setImages(data);
-        } else if (alive) {
-          setImages([]);
+        if (!alive || !data || data.length === 0) return;
+
+        // Ne garder que les images qui se chargent réellement
+        const ok = [];
+        for (const h of data.slice(0, 6)) {
+          const src = resolveHeroImage(h);
+          const loaded = await preloadImage(src);
+          if (loaded) {
+            readyRef.current.add(h.id);
+            ok.push(h);
+          } else if (alive) {
+            console.warn("Image hero illisible, ignorée :", src);
+          }
+          if (!alive) return;
         }
+        if (alive) setImages(ok);
       } catch {
-        if (alive) setImages([]);
+        // réseau indisponible : le fallback reste affiché
       }
     })();
     return () => { alive = false; };
   }, []);
 
   const next = useCallback(() => {
-    setIndex((prev) => (prev + 1) % images.length);
+    setIndex((prev) => (images.length ? (prev + 1) % images.length : 0));
   }, [images.length]);
 
+  // Autoplay : ne tourne que si l'image courante est déjà chargée
   useEffect(() => {
-    if (images.length <= 1 || paused) return;
-    timerRef.current = setInterval(next, 5000);
-    return () => clearInterval(timerRef.current);
-  }, [images.length, paused, next]);
+    if (paused || images.length <= 1) return;
+    const cur = images[index];
+    if (cur && !readyRef.current.has(cur.id)) return;
+    timerRef.current = setTimeout(next, SLIDE_MS);
+    return () => clearTimeout(timerRef.current);
+  }, [index, paused, images, next]);
 
+  const fallbackSrc = fallbackImage || DEFAULT_HERO;
   const currentImage = images.length > 0 ? images[index] : null;
-  const src = currentImage ? resolveHeroImage(currentImage) : (fallbackImage || DEFAULT_HERO);
   const anim = HERO_ANIMATIONS[index % HERO_ANIMATIONS.length];
 
   return (
@@ -85,25 +111,39 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
         onTouchStart={() => setPaused(true)}
         onTouchEnd={() => setTimeout(() => setPaused(false), 3000)}
       >
-        <AnimatePresence mode="wait">
-          <motion.img
-            key={(currentImage?.id || "fallback") + "-" + index}
-            src={src}
+        {/* Fallback visible pendant le chargement / si aucune image */}
+        {!currentImage && (
+          <img
+            src={fallbackSrc}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
-            initial={anim.initial}
-            animate={anim.animate}
-            exit={anim.exit}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            decoding="async"
           />
+        )}
+
+        {/* Slides empilées : pas de re-téléchargement au changement */}
+        <AnimatePresence>
+          {currentImage && (
+            <motion.img
+              key={currentImage.id}
+              src={resolveHeroImage(currentImage)}
+              alt={currentImage.title || ""}
+              className="absolute inset-0 h-full w-full object-cover"
+              initial={anim.initial}
+              animate={anim.animate}
+              exit={anim.exit}
+              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+              decoding="async"
+            />
+          )}
         </AnimatePresence>
 
-        {/* Dots navigation — inside image area, at bottom */}
+        {/* Dots navigation */}
         {images.length > 1 && (
           <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-1.5 z-20">
-            {images.map((_, i) => (
+            {images.map((img, i) => (
               <button
-                key={i}
+                key={img.id}
                 onClick={() => setIndex(i)}
                 className="h-1.5 rounded-full transition-all duration-300"
                 style={{

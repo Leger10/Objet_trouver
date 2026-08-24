@@ -10,7 +10,7 @@ import { useBranding } from '@/contexts/BrandingContext';
 const field = 'w-full rounded-xl border border-input bg-background px-4 py-3.5 text-base outline-none focus:border-primary focus:ring-2 focus:ring-ring/30';
 
 const POINTS_ITEMS = [
-    { icon: '📦', label: 'Déclarer un objet trouvé', pts: '+10 pts' },
+    { icon: '📦', label: 'Déclarer un objet trouvé' },
     { icon: '🤝', label: 'Correspondance confirmée', pts: '+50 pts' },
     { icon: '🎉', label: 'Restitution effectuée', pts: '+100 pts' },
     { icon: '👥', label: 'Parrainer un ami', pts: '+20 pts' },

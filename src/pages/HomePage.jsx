@@ -237,7 +237,7 @@ const HomePage = () => {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-base sm:text-lg font-extrabold tracking-tight">J&apos;AI RETROUVÉ</span>
-                <span className="block text-[11px] text-white/80">Déclarer un objet trouvé · +10 points</span>
+                <span className="block text-[11px] text-white/80">Déclarer un objet trouvé ·</span>
               </span>
               <ArrowRight className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-1" />
             </Link>

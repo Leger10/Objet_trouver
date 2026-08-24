@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Smartphone } from "lucide-react";
 import { useBranding } from "@/contexts/BrandingContext";
+import { LOGO_URL } from "@/lib/brandingDefaults";
 
 const DISMISS_SESSION = "pwa_install_dismissed_session";
 
@@ -112,7 +113,7 @@ export default function InstallFloatingButton() {
             {/* Logo */}
             <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100">
               <img
-                src={branding?.logo_url}
+                src={branding?.logo_url || LOGO_URL}
                 alt={branding?.app_name || "RetrouveMoi"}
                 className="h-10 w-10 object-contain"
               />

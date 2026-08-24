@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Smartphone } from "lucide-react";
 import { useInstallPrompt } from "@/hooks/useInstallPrompt";
 import { useBranding } from "@/contexts/BrandingContext";
+import { LOGO_URL } from "@/lib/brandingDefaults";
 
 export default function InstallBanner() {
   const { isInstalled, canInstall, install, dismiss } = useInstallPrompt();
@@ -58,7 +59,7 @@ export default function InstallBanner() {
           <div className="flex items-start gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-primary/10 shadow-inner">
               <img
-                src={branding?.logo_url}
+                src={branding?.logo_url || LOGO_URL}
                 alt={branding?.app_name || "RetrouveMoi"}
                 className="h-12 w-12 object-contain"
               />

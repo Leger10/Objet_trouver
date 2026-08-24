@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, X, Smartphone, Monitor, ArrowRight } from "lucide-react";
 import { useBranding } from "@/contexts/BrandingContext";
+import { LOGO_URL } from "@/lib/brandingDefaults";
 
 const DISMISS_KEY = "pwa_install_dismissed";
 const DISMISS_SESSION = "pwa_install_dismissed_session";
@@ -109,7 +110,7 @@ export default function InstallPopup() {
             <div className="flex justify-center">
               <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-3xl bg-primary/10 shadow-inner">
                 <img
-                  src={branding?.logo_url}
+                  src={branding?.logo_url || LOGO_URL}
                   alt={branding?.app_name || "RetrouveMoi"}
                   className="h-16 w-16 object-contain"
                 />
