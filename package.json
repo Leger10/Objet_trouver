@@ -10,7 +10,9 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives",
     "lint:fix": "eslint . --ext js,jsx --fix",
     "lint:unicode": "eslint . --ext js,jsx --format ./eslint.unicode-escapes-formatter.mjs --no-error-on-unmatched-pattern",
-    "fix:unicode": "node scripts/fix-unicode-escapes.js"
+    "fix:unicode": "node scripts/fix-unicode-escapes.js",
+    "test:functions": "node scripts/test-payment-functions.cjs",
+    "netlify:dev": "netlify dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

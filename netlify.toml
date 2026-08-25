@@ -16,6 +16,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/create-payment"
+  to = "/.netlify/functions/create-payment"
+  status = 200
+
+[[redirects]]
+  from = "/api/verify-payment"
+  to = "/.netlify/functions/verify-payment"
+  status = 200
+
+[[redirects]]
   from = "/api/withdraw"
   to = "/.netlify/functions/withdraw"
   status = 200

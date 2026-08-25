@@ -1,4 +1,4 @@
-// Netlify Function: Initiate withdrawal via MoneyFusion Payout API
+﻿// Netlify Function: Initiate withdrawal via MoneyFusion Payout API
 // API key stays server-side, never exposed to frontend
 
 const MONEYFUSION_API_KEY =
@@ -10,7 +10,7 @@ const headers = {
   "Access-Control-Allow-Origin": "*",
 };
 
-exports.handler = async (event) => {
+export const handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers, body: "" };
   }

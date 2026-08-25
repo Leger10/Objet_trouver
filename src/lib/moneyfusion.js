@@ -1,9 +1,10 @@
 import { pb } from "@/lib/supabaseClient";
 
 // ── MoneyFusion API Configuration ──────────────────────────────────────────
-const PAYIN_API_URL =
-  "https://www.pay.moneyfusion.net/retrounvemoi/98df8c5290593912/pay/";
-const VERIFY_URL = "https://www.pay.moneyfusion.net/paiementNotif";
+// Les appels passent par les fonctions Netlify (proxy) : l'API MoneyFusion
+// n'autorise pas les requêtes navigateur (CORS).
+const PAYIN_API_URL = "/api/create-payment";
+const VERIFY_URL = "/api/verify-payment";
 const RETURN_URL = "https://retrouvemoi.netlify.app/success";
 const WEBHOOK_URL = "https://retrouvemoi.netlify.app/api/webhook";
 
@@ -50,9 +51,15 @@ export const initPayment = async ({
     body: JSON.stringify(body),
   });
 
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Passerelle de paiement indisponible (${res.status})`);
+  }
   if (!data.statut || !data.url) {
-    throw new Error(data.message || "Erreur lors de l'initialisation du paiement");
+    throw new Error(data.message || data.error || "Erreur lors de l'initialisation du paiement");
   }
   return data; // { statut: true, token, url, message }
 };
@@ -66,7 +73,10 @@ export const redirectToPayment = (paymentUrl) => {
 
 // ── Verify payment status ──────────────────────────────────────────────────
 export const verifyPayment = async (token) => {
-  const res = await fetch(`${VERIFY_URL}/${token}`);
+  const res = await fetch(`${VERIFY_URL}?token=${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    throw new Error("Impossible de vérifier le paiement pour le moment");
+  }
   const data = await res.json();
   return data; // { statut: true, data: { Montant, frais, statut: "paid"|"pending"|"failure" } }
 };
