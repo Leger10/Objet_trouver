@@ -71,6 +71,29 @@ export const redirectToPayment = (paymentUrl) => {
   }
 };
 
+// ── Save payment context before redirect (used by SuccessPage) ─────────────
+export const savePaymentContext = ({ token, type, itemKey, userId }) => {
+  try {
+    sessionStorage.setItem(
+      "mf_pending_payment",
+      JSON.stringify({ token, type, itemKey, userId, ts: Date.now() })
+    );
+  } catch {}
+};
+
+export const getPaymentContext = () => {
+  try {
+    const raw = sessionStorage.getItem("mf_pending_payment");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const clearPaymentContext = () => {
+  try { sessionStorage.removeItem("mf_pending_payment"); } catch {}
+};
+
 // ── Verify payment status ──────────────────────────────────────────────────
 export const verifyPayment = async (token) => {
   const res = await fetch(`${VERIFY_URL}?token=${encodeURIComponent(token)}`);
@@ -96,6 +119,7 @@ export const createPendingPayment = async ({
     type,
     item_key: itemKey,
     item_label: itemLabel,
+    amount: amountFcfa,
     amount_fcfa: amountFcfa,
     fee_fcfa: computeFee(amountFcfa),
     total_charged: computeTotalWithFee(amountFcfa),

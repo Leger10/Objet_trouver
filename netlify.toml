@@ -2,6 +2,9 @@
   publish = "dist"
   command = "npx vite build"
 
+[dev]
+  framework = "#static"
+
 [build.environment]
   NODE_VERSION = "20"
 
@@ -23,6 +26,11 @@
 [[redirects]]
   from = "/api/verify-payment"
   to = "/.netlify/functions/verify-payment"
+  status = 200
+
+[[redirects]]
+  from = "/api/activate-payment"
+  to = "/.netlify/functions/activate-payment"
   status = 200
 
 [[redirects]]

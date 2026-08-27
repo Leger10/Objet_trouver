@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Lock, Loader2, Smartphone, User, Phone } from "lucide-react";
-import { initPayment, computeTotalWithFee, computeFee } from "@/lib/moneyfusion";
+import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
 import { formatNumber } from "@/lib/format";
 
 const field =
@@ -68,6 +68,7 @@ const PaymentMethodPicker = ({
       });
 
       if (result.url) {
+        savePaymentContext({ token: result.token, type, itemKey: itemId });
         window.location.href = result.url;
       }
     } catch (err) {

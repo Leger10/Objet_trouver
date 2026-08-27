@@ -83,6 +83,7 @@ export const createPayment = async ({
     type,
     item_key: itemKey,
     item_label: itemLabel,
+    amount: amountFcfa,
     amount_fcfa: amountFcfa,
     payment_method: method,
     status: "pending",

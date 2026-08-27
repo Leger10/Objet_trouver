@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { CheckCircle2, Crown, Loader2, Sparkles, X } from "lucide-react";
+import { CheckCircle2, Crown, Loader2, Sparkles, X, RefreshCw, AlertTriangle } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +55,7 @@ const SubscriptionPage = () => {
   }, [load]);
 
   const currentPlan = user?.plan || "free";
+  const isExpired = sub && sub.renews_at && new Date(sub.renews_at) < new Date();
 
   const paymentPaginate = usePaginate(payments);
 
@@ -64,7 +65,7 @@ const SubscriptionPage = () => {
       return;
     }
     if (plan.key === "free") return;
-    if (currentPlan === plan.key && sub) {
+    if (currentPlan === plan.key && sub && !isExpired) {
       toast("Vous êtes déjà abonné à ce plan.");
       return;
     }
@@ -138,11 +139,46 @@ const SubscriptionPage = () => {
             <div className="mt-5 rounded-2xl bg-white/15 px-4 py-3 text-sm">
               <p className="font-bold">Abonnement actuel : {sub.plan}</p>
               <p className="text-white/80">
-                Renouvellement le {formatDate(sub.renews_at)}
+                {isExpired
+                  ? `Expiré le ${formatDate(sub.renews_at)}`
+                  : `Renouvellement le ${formatDate(sub.renews_at)}`}
               </p>
             </div>
           )}
         </div>
+
+        {/* Expired subscription banner */}
+        {isExpired && isAuthed && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 rounded-2xl border-2 border-amber-400/50 bg-amber-50 dark:bg-amber-950/30 p-5"
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-extrabold text-amber-800 dark:text-amber-200">
+                  Votre abonnement {sub.plan} a expiré
+                </p>
+                <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                  Vous avez perdu les avantages de votre plan. Réabonnez-vous
+                  pour les retrouver.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const plan = SUBSCRIPTION_PLANS.find((p) => p.key === sub.plan && p.key !== "free");
+                    if (plan) startCheckout(plan);
+                  }}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white active:scale-[0.98] transition-transform"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Réabonner à {sub.plan}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Plans */}
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
@@ -189,13 +225,22 @@ const SubscriptionPage = () => {
                   >
                     {isCurrent ? "Plan actuel" : "Par défaut"}
                   </span>
-                ) : isCurrent && sub ? (
+                ) : isCurrent && sub && !isExpired ? (
                   <button
                     type="button"
                     onClick={cancelSub}
                     className="mt-5 rounded-xl border border-border px-4 py-3 font-bold text-destructive"
                   >
                     Annuler l'abonnement
+                  </button>
+                ) : isCurrent && sub && isExpired ? (
+                  <button
+                    type="button"
+                    onClick={() => startCheckout(plan)}
+                    className="mt-5 rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground active:scale-[0.98] transition-transform"
+                  >
+                    <RefreshCw className="inline h-4 w-4 mr-1" />
+                    Réabonner
                   </button>
                 ) : (
                   <button

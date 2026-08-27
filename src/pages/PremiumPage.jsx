@@ -6,7 +6,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatNumber } from "@/lib/format";
-import { initPayment, computeTotalWithFee, computeFee } from "@/lib/moneyfusion";
+import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
 
 const PHONE =
   "https://images.hostinger.com/9beb81a9-30fa-4a2b-8f4c-e0cc5df05962.png";
@@ -94,6 +94,7 @@ const PremiumPage = () => {
           type: checkout.id === "priority" ? "priority" : "subscription",
           item_key: checkout.id,
           item_label: checkout.name,
+          amount: checkout.price,
           amount_fcfa: checkout.price,
           fee_fcfa: computeFee(checkout.price),
           total_charged: computeTotalWithFee(checkout.price),
@@ -102,6 +103,7 @@ const PremiumPage = () => {
           moneyfusion_token: result.token || "",
           description: `Offre ${checkout.name}`,
         });
+        savePaymentContext({ token: result.token, type: "subscription", itemKey: checkout.id, userId: user.id });
         window.location.href = result.url;
       }
     } catch (err) {

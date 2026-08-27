@@ -25,7 +25,7 @@ import CategoryGrid from "@/components/CategoryGrid";
 import MatchVerifyPopup from "@/components/MatchVerifyPopup";
 import { CATEGORY_GROUPS, CATEGORY_META } from "@/lib/categories";
 import { formatNumber } from "@/lib/format";
-import { initPayment, computeTotalWithFee, computeFee } from "@/lib/moneyfusion";
+import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
 import { detectDocument } from "@/lib/documentDetector";
 
 const field =
@@ -258,6 +258,7 @@ const DeclarePage = () => {
               type: "priority",
               item_key: rec.id,
               item_label: `Mise en avant déclaration: ${rec.id}`,
+              amount: 500,
               amount_fcfa: 500,
               fee_fcfa: computeFee(500),
               total_charged: computeTotalWithFee(500),
@@ -266,6 +267,7 @@ const DeclarePage = () => {
               moneyfusion_token: mfResult.token || "",
               description: `Mise en avant déclaration: ${rec.id}`,
             });
+            savePaymentContext({ token: mfResult.token, type: "priority", itemKey: rec.id, userId: user.id });
             window.location.href = mfResult.url;
             return;
           }
