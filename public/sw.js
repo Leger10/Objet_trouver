@@ -1,4 +1,4 @@
-const CACHE_NAME = "retrouvemoi-v3";
+const CACHE_NAME = "retrouvemoi-v6";
 const PRECACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {

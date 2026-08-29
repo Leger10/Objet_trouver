@@ -27,7 +27,7 @@ import {
   maskPhone,
 } from "@/lib/retrouve";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";
-import PaymentMethodPicker from "@/components/PaymentMethodPicker";
+import PaymentOptions from "@/components/PaymentOptions";
 import {
   FCFA_SERVICES,
   computeCommission,
@@ -1169,21 +1169,33 @@ const RewardsPage = () => {
                 </p>
               </div>
             </div>
-            <PaymentMethodPicker
+            <PaymentOptions
               amount={fcfaCheckout.price}
-              onBeforePay={async () => {
-                if (!user) return;
-                await createPendingPayment({
-                  userId: user.id,
+              online={{
+                onBeforePay: async () => {
+                  if (!user) return;
+                  await createPendingPayment({
+                    userId: user.id,
+                    type: "service",
+                    itemKey: fcfaCheckout.key,
+                    itemLabel: fcfaCheckout.label,
+                    amountFcfa: fcfaCheckout.price,
+                  });
+                },
+                type: "service",
+                itemId: fcfaCheckout.key,
+                ctaLabel: "Payer le service",
+              }}
+              ussd={{
+                itemLabel: fcfaCheckout.label,
+                payload: {
+                  userId: user?.id || "",
                   type: "service",
                   itemKey: fcfaCheckout.key,
                   itemLabel: fcfaCheckout.label,
                   amountFcfa: fcfaCheckout.price,
-                });
+                },
               }}
-              type="service"
-              itemId={fcfaCheckout.key}
-              ctaLabel="Payer le service"
             />
           </div>
         </div>

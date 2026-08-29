@@ -29,7 +29,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import AdSlot from "@/components/AdSlot";
 import { useAuth } from "@/contexts/AuthContext";
-import { maskId, notify } from "@/lib/retrouve";
+import { maskId, notify, notifyAdminsOfClaim } from "@/lib/retrouve";
 import EtiquetteDecl from "@/components/EtiquetteDecl";
 import MatchComparison from "@/components/MatchComparison";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -118,14 +118,10 @@ const DeclarationPage = () => {
       await pb.collection("claims").create({
         declaration: item.id,
         claimant: user.id,
-        proof_note: claim.proof_note,
+        security_answer: claim.proof_note,
         status: "pending",
       });
-      await notify(
-        item.owner,
-        "Nouvelle demande de restitution",
-        `Une personne répond à votre déclaration « ${item.title} ». Vérifiez sa réponse dans votre espace.`,
-      );
+      await notifyAdminsOfClaim(item, user?.city || "");
       setSent(true);
     } catch (err) {
       setError(err?.message || "La demande n'a pas pu être envoyée.");
@@ -711,80 +707,77 @@ const DeclarationPage = () => {
             title="Assurez vos documents"
             cta="Découvrir"
           />
-        </motion.div>
 
-        {/* ════════════ BOTTOM CTA SHEET ════════════ */}
-        <AnimatePresence>
-          {!isOwner && (
-            <motion.div
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              transition={{ type: "spring", damping: 24, stiffness: 200 }}
-              className="fixed bottom-0 left-0 right-0 z-40 safe-area-bottom"
-            >
-              <div className="mx-auto max-w-lg px-4 pb-4">
-                <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl p-5 shadow-2xl shadow-black/50">
-                  {!isAuthed ? (
-                    <div className="text-center">
-                      <p className="text-sm text-white/60">
-                        Connectez-vous pour récupérer cet objet
-                      </p>
-                      <Link
-                        to="/connexion"
-                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-primary/80 px-6 py-4 text-sm font-extrabold text-primary-foreground shadow-lg shadow-primary/30 active:scale-[0.98] transition-transform"
-                      >
-                        <ShieldCheck className="h-4 w-4" />
-                        Se connecter
-                      </Link>
-                    </div>
-                  ) : sent ? (
-                    <div className="flex items-center gap-3 rounded-2xl bg-emerald-500/10 p-4">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-                      <div>
-                        <p className="text-sm font-bold text-emerald-300">Demande envoyée !</p>
-                        <p className="text-xs text-emerald-400/60">Le déclarant va vérifier votre réponse.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <form onSubmit={submitClaim} className="space-y-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="grid h-8 w-8 place-items-center rounded-xl bg-amber-500/15">
-                          <Lock className="h-4 w-4 text-amber-400" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-extrabold text-white">Contacter le propriétaire</p>
-                          <p className="text-[11px] text-white/40">Expliquez pourquoi cet objet vous appartient</p>
-                        </div>
-                      </div>
-
-                      <textarea
-                        rows={2}
-                        className={field}
-                        placeholder="Précisez un détail que seul le propriétaire pourrait confirmer (lieu, circonstances, preuve…)"
-                        value={claim.proof_note}
-                        onChange={(e) => setClaim((c) => ({ ...c, proof_note: e.target.value }))}
-                        required
-                      />
-                      <button
-                        type="submit"
-                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform"
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Demander la restitution
-                      </button>
-                      {error && (
-                        <p className="rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-400">
-                          {error}
-                        </p>
-                      )}
-                    </form>
-                  )}
-                </div>
-              </div>
-            </motion.div>
+          {/* ── Contacter le propriétaire (carte intégrée) ── */}
+          {item?.kind === "lost" && !isOwner && (
+            <section {...fadeIn} className="rounded-3xl border border-dashed border-white/10 bg-white/5 p-4 text-center">
+              <CircleDot className="mx-auto h-6 w-6 text-white/20" />
+              <p className="mt-2 text-sm font-bold text-white/60">Objet égaré</p>
+              <p className="mt-1 text-xs text-white/35 leading-relaxed">
+                La restitution ne s&apos;applique qu&apos;aux objets retrouvés. Si vous avez trouvé cet objet, contactez l&apos;équipe {branding.app_name}.
+              </p>
+            </section>
           )}
-        </AnimatePresence>
+          {item?.kind === "found" && !isOwner && (
+            <section {...fadeIn} className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-4">
+              {!isAuthed ? (
+                <div className="text-center">
+                  <p className="text-sm text-white/60">
+                    Connectez-vous pour récupérer cet objet
+                  </p>
+                  <Link
+                    to="/connexion"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-primary/80 px-6 py-4 text-sm font-extrabold text-primary-foreground shadow-lg shadow-primary/30 active:scale-[0.98] transition-transform"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Se connecter
+                  </Link>
+                </div>
+              ) : sent ? (
+                <div className="flex items-center gap-3 rounded-2xl bg-emerald-500/10 p-4">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-300">Demande envoyée !</p>
+                    <p className="text-xs text-emerald-400/60">Le déclarant va vérifier votre réponse.</p>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={submitClaim} className="space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="grid h-8 w-8 place-items-center rounded-xl bg-amber-500/15">
+                      <Lock className="h-4 w-4 text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-extrabold text-white">Contacter le propriétaire</p>
+                      <p className="text-[11px] text-white/40">Expliquez pourquoi cet objet vous appartient</p>
+                    </div>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    className={field}
+                    placeholder="Précisez un détail que seul le propriétaire pourrait confirmer (lieu, circonstances, preuve…)"
+                    value={claim.proof_note}
+                    onChange={(e) => setClaim((c) => ({ ...c, proof_note: e.target.value }))}
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Demander la restitution
+                  </button>
+                  {error && (
+                    <p className="rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-400">
+                      {error}
+                    </p>
+                  )}
+                </form>
+              )}
+            </section>
+          )}
+        </motion.div>
       </div>
     </Layout>
   );

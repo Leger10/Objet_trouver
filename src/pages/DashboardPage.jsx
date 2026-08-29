@@ -613,7 +613,7 @@ const DashboardPage = () => {
                   <div key={c.id} className="rounded-2xl border border-border/60 bg-background p-3">
                     <p className="text-sm font-bold">{c.expand?.declaration?.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Réponse : <span className="font-semibold text-foreground">{c.answer}</span>
+                      Réponse : <span className="font-semibold text-foreground">{c.security_answer || c.answer}</span>
                     </p>
                     <span className="mt-2 inline-block rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                       {c.status}

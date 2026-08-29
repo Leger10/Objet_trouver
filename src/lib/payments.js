@@ -5,6 +5,22 @@ export const ORANGE_NUMBER = "46598281";
 export const MOVE_NUMBER = "00226 73 79 09 78";
 export const WAVE_NUMBER = "00226 54 32 92 99";
 
+// ── USSD helpers ───────────────────────────────────────────────────────────
+// Code USSD Orange Money à composer : *144*10*NUMERO_MARCHAND*MONTANT#
+export const ussdCode = (amount) => `*144*10*${ORANGE_NUMBER}*${amount || 0}#`;
+
+// Lien tap-to-dial (mobile) : # est encodé en %23 pour la passerelle USSD
+export const ussdTelLink = (amount) =>
+  `tel:${ussdCode(amount).replace(/#/g, "%23")}`;
+
+// Instructions pas-à-pas affichées sous le code
+export const USSD_STEPS = [
+  "Composez le code ci-contre puis appuyez sur Appeler.",
+  "Confirmez le montant avec votre code secret Orange Money.",
+  "Validez la transaction : vous recevez un SMS de confirmation.",
+  "Revenez ici et appuyez sur « J'ai payé » pour finaliser.",
+];
+
 export const PAYMENT_METHODS = [
   {
     key: "orange_money",
@@ -53,8 +69,6 @@ export const PAYMENT_METHODS = [
 ];
 
 export const methodByKey = (key) => PAYMENT_METHODS.find((m) => m.key === key);
-
-export const ussdCode = (amount) => `*144*10*${ORANGE_NUMBER}*${amount || 0}#`;
 
 export const transferNumber = (key) =>
   key === "wave" ? WAVE_NUMBER : MOVE_NUMBER;

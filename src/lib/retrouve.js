@@ -107,6 +107,41 @@ export const notify = async (
   }
 };
 
+// Achemine une demande de restitution vers l'admin le plus proche de la personne
+// (même ville) + l'admin principal (digihouse10@gmail.com).
+export const notifyAdminsOfClaim = async (item, claimantCity = "") => {
+  const notified = [];
+  try {
+    const admins = await pb.collection("users").getFullList({
+      filter: 'role = "admin"',
+      requestKey: "admins",
+    });
+    if (!admins || admins.length === 0) return notified;
+
+    const city = (item.city || claimantCity || "").trim().toLowerCase();
+    const closest = admins.find((a) => (a.city || "").trim().toLowerCase() === city) || null;
+    const main = admins.find((a) => (a.email || "").toLowerCase() === "digihouse10@gmail.com") || null;
+
+    const targets = [main, closest].filter((a) => a && a.id !== item.owner);
+    const seen = new Set();
+    for (const t of targets) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      try {
+        await pb.collection("notifications").create({
+          user: t.id,
+          title: "Nouvelle demande de restitution",
+          body: `Une personne réclame « ${item.title} » (${item.city || "ville inconnue"}${item.zone ? ` · ${item.zone}` : ""}). Traitez-la dans l'admin.`,
+          link: "/admin",
+          read: false,
+        });
+        notified.push(t.id);
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return notified;
+};
+
 // Cherche les correspondances pour une nouvelle déclaration et les enregistre
 export const runMatching = async (declaration) => {
   const opposite = declaration.kind === "lost" ? "found" : "lost";

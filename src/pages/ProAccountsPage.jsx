@@ -7,7 +7,7 @@ import { Building2, CheckCircle2, Loader2, X } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
-import PaymentMethodPicker from "@/components/PaymentMethodPicker";
+import PaymentOptions from "@/components/PaymentOptions";
 import {
   PRO_PLANS,
   ORG_TYPES,
@@ -394,45 +394,84 @@ const ProAccountsPage = () => {
               Premier mois facturé maintenant. Votre organisation sera vérifiée
               sous 48h.
             </p>
-            <PaymentMethodPicker
+            <PaymentOptions
               amount={checkout.price}
-              onBeforePay={async () => {
-                if (!user) return;
-                if (!proAccount) {
-                  const rec = await pb.collection("pro_accounts").create({
-                    owner: user.id,
-                    org_type: form.org_type,
-                    org_name: form.org_name.trim(),
-                    org_description: form.org_description.trim(),
-                    plan: checkout.key,
-                    max_users: checkout.maxUsers,
-                    contact_email: form.contact_email.trim(),
-                    contact_phone: form.contact_phone.trim(),
-                    status: "pending",
+              online={{
+                onBeforePay: async () => {
+                  if (!user) return;
+                  if (!proAccount) {
+                    const rec = await pb.collection("pro_accounts").create({
+                      owner: user.id,
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                      status: "pending",
+                    });
+                    setProAccount(rec);
+                  } else {
+                    await pb.collection("pro_accounts").update(proAccount.id, {
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                    });
+                  }
+                  await createPendingPayment({
+                    userId: user.id,
+                    type: "pro_account",
+                    itemKey: checkout.key,
+                    itemLabel: `Compte Pro ${checkout.name} — ${form.org_name.trim()}`,
+                    amountFcfa: checkout.price,
                   });
-                  setProAccount(rec);
-                } else {
-                  await pb.collection("pro_accounts").update(proAccount.id, {
-                    plan: checkout.key,
-                    max_users: checkout.maxUsers,
-                    org_type: form.org_type,
-                    org_name: form.org_name.trim(),
-                    org_description: form.org_description.trim(),
-                    contact_email: form.contact_email.trim(),
-                    contact_phone: form.contact_phone.trim(),
-                  });
-                }
-                await createPendingPayment({
-                  userId: user.id,
+                },
+                type: "pro_account",
+                itemId: checkout.key,
+                ctaLabel: "Payer le 1er mois",
+              }}
+              ussd={{
+                itemLabel: `Compte Pro ${checkout.name} — ${form.org_name.trim()}`,
+                payload: {
+                  userId: user?.id || "",
                   type: "pro_account",
                   itemKey: checkout.key,
                   itemLabel: `Compte Pro ${checkout.name} — ${form.org_name.trim()}`,
                   amountFcfa: checkout.price,
-                });
+                },
+                onBeforeSubmit: async () => {
+                  if (!user) return;
+                  if (!proAccount) {
+                    const rec = await pb.collection("pro_accounts").create({
+                      owner: user.id,
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                      status: "pending",
+                    });
+                    setProAccount(rec);
+                  } else {
+                    await pb.collection("pro_accounts").update(proAccount.id, {
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                    });
+                  }
+                },
               }}
-              type="pro_account"
-              itemId={checkout.key}
-              ctaLabel="Payer le 1er mois"
             />
           </div>
         </div>

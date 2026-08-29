@@ -12,7 +12,7 @@ import {
   TYPE_BADGE,
   formatDateTimeFr,
 } from "@/lib/pv";
-import { bulkRematch } from "@/lib/retrouve";
+import { bulkRematch, isServiceActive, notify } from "@/lib/retrouve";
 import BrandLogo from "@/components/BrandLogo";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
@@ -36,7 +36,9 @@ import {
   BarChart3,
   Users,
   FileCheck,
+  Flame,
   Globe,
+  Handshake,
   AlertTriangle,
   DollarSign,
   Receipt,
@@ -60,6 +62,7 @@ const ALL_TABS = [
   { key: "utilisateurs", label: "Utilisateurs", icon: UsersIcon },
   { key: "signalements", label: "Signalements", icon: AlertTriangle },
   { key: "declarations", label: "Déclarations", icon: FileCheck },
+  { key: "restitutions", label: "Restitutions", icon: Handshake },
   { key: "donations", label: "Donations", icon: Coins, mainAdminOnly: true },
   { key: "finances", label: "Finances", icon: DollarSign, mainAdminOnly: true },
   { key: "retraits", label: "Retraits", icon: BarChart3, mainAdminOnly: true },
@@ -72,6 +75,7 @@ const ALL_TABS = [
   { key: "pub", label: "Pub", icon: Megaphone },
   { key: "pv", label: "PV", icon: FileText },
   { key: "installations", label: "Installs", icon: Smartphone, mainAdminOnly: true },
+  { key: "diffusion", label: "Diffusion", icon: Send, mainAdminOnly: true },
   { key: "support", label: "Support", icon: Mail },
 ];
 
@@ -79,7 +83,9 @@ const AdminPage = () => {
   const { user, isMainAdmin, adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser } = useAuth();
   const { branding } = useBranding();
   const isAdmin = user?.role === "admin";
-  const [tab, setTab] = useState("utilisateurs");
+  const [tab, setTab] = useState(
+    () => new URLSearchParams(window.location.search).get("tab") || "utilisateurs"
+  );
 
   // Filter tabs based on admin role
   const TABS = ALL_TABS.filter((t) => !t.mainAdminOnly || isMainAdmin);
@@ -100,6 +106,7 @@ const AdminPage = () => {
     donationTotal: 0,
   });
   const [declarations, setDeclarations] = useState([]);
+  const [claims, setClaims] = useState([]);
   const [reports, setReports] = useState([]);
   const [donations, setDonations] = useState([]);
   const [methodStats, setMethodStats] = useState({
@@ -149,7 +156,7 @@ const AdminPage = () => {
         }
       };
 
-      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList, installs, supMsgs] =
+      const [lost, found, returned, cats, decl, rep, dons, totals, wds, prc, pays, subs, pros, ads, pvList, installs, supMsgs, clms] =
         await Promise.all([
           safeGetList("declarations", 1, 1, { filter: 'kind = "lost"', requestKey: "a1" }),
           safeGetList("declarations", 1, 1, { filter: 'kind = "found"', requestKey: "a2" }),
@@ -160,7 +167,7 @@ const AdminPage = () => {
           safeGetList("donations", 1, 30, { sort: "-created", requestKey: "a8" }),
           safeGetFirst("donation_totals", "label = 'global'"),
           safeGetFull("withdrawals", { sort: "-created", expand: "user", requestKey: "a9" }),
-          safeGetFull("point_purchases", { sort: "-created", requestKey: "a10" }),
+          safeGetFull("point_purchases", { sort: "-created", expand: "user", requestKey: "a10" }),
           safeGetFull("payments", { sort: "-created", expand: "user", requestKey: "a11" }),
           safeGetFull("subscriptions", { sort: "-created", expand: "user", requestKey: "a12" }),
           safeGetFull("pro_accounts", { sort: "-created", expand: "owner", requestKey: "a13" }),
@@ -168,6 +175,7 @@ const AdminPage = () => {
           safeGetFull("pvs", { sort: "-created", expand: "generated_by,related_declaration", requestKey: "a15" }),
           safeGetFull("app_installations", { sort: "-installed_at", expand: "user", requestKey: "a16" }),
           safeGetFull("support_messages", { sort: "-created_at", requestKey: "a17" }),
+          safeGetFull("claims", { sort: "-created", expand: "declaration,claimant", requestKey: "a18" }),
         ]);
 
       let allUsers = [];
@@ -192,6 +200,7 @@ const AdminPage = () => {
         donationTotal: totals?.total_fcfa || 0,
       });
       setDeclarations(decl.items);
+      setClaims(clms || []);
       setReports(rep);
       setDonations(dons.items);
       const byMethod = {
@@ -270,9 +279,31 @@ const AdminPage = () => {
 
   const setPaymentStatus = async (p, status) => {
     try {
-      await pb.collection("payments").update(p.id, { status });
+      // Via la fonction serveur pour activer le service et notifier l'utilisateur
+      if (status === "confirmed" || status === "failed") {
+        const res = await fetch("/api/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentId: p.id, status }),
+        });
+        const data = await res.json();
+        if (!data.statut) {
+          await pb.collection("payments").update(p.id, { status });
+        } else if (status === "failed" && data.rejection?.push) {
+          toast.success("Paiement rejeté", {
+            description: "L'utilisateur a été prévenu sur son appareil.",
+          });
+        }
+      } else {
+        await pb.collection("payments").update(p.id, { status });
+      }
       load();
-    } catch (_) {}
+    } catch (_) {
+      try {
+        await pb.collection("payments").update(p.id, { status });
+        load();
+      } catch (_) {}
+    }
   };
 
   const setProAccountStatus = async (pa, status) => {
@@ -280,6 +311,63 @@ const AdminPage = () => {
       await pb.collection("pro_accounts").update(pa.id, { status });
       load();
     } catch (_) {}
+  };
+
+  const togglePriority = async (d) => {
+    try {
+      const active = !!d.priority && (!d.priority_until || new Date(d.priority_until) > new Date());
+      await pb.collection("declarations").update(
+        d.id,
+        active
+          ? { priority: false, priority_until: null }
+          : { priority: true, priority_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() }
+      );
+      load();
+    } catch (_) {}
+  };
+
+  const setSubStatus = async (s, status) => {
+    try {
+      const payload =
+        status === "active"
+          ? {
+              status: "active",
+              auto_renew: true,
+              renews_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            }
+          : { status: "cancelled", auto_renew: false };
+      await pb.collection("subscriptions").update(s.id, payload);
+      load();
+    } catch (_) {}
+  };
+
+  const setPurchaseStatus = async (prc, status) => {
+    try {
+      await pb.collection("point_purchases").update(prc.id, { status });
+      load();
+    } catch (_) {}
+  };
+
+  const setClaimStatus = async (c, status) => {
+    try {
+      await pb.collection("claims").update(c.id, { status });
+      const label =
+        status === "verified"
+          ? "Vérification réussie : le déclarant va vous contacter."
+          : status === "returned"
+            ? "Restitution confirmée. Merci !"
+            : "Votre demande a été refusée (réponse incorrecte).";
+      await notify(c.claimant, "Mise à jour de votre demande", label);
+      if (status === "returned")
+        toast.success("Restitution confirmée", {
+          description: "+100 points crédités.",
+        });
+      else if (status === "verified") toast.success("Demande vérifiée");
+      else toast("Demande refusée");
+      load();
+    } catch (_) {
+      toast.error("Action impossible");
+    }
   };
 
   // ── Finance computations ────────────────────────────────────────────────
@@ -407,6 +495,33 @@ const AdminPage = () => {
 
       <div className="mx-auto max-w-lg px-4 pt-4 pb-24 space-y-4">
 
+        {/* ── Onglets admin (menu affiché en premier : tous visibles) ── */}
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            const badge = tabBadges[t.key];
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[11px] font-bold leading-tight text-center transition-all ${
+                  active
+                    ? "bg-primary text-primary-foreground shadow-md"
+                    : "bg-card border border-border text-muted-foreground"
+                }`}
+              >
+                <t.icon className="h-3.5 w-3.5 shrink-0" />
+                <span>{t.label}</span>
+                {badge > 0 && (
+                  <span className={`ml-0.5 rounded-full px-1.5 py-0 text-[9px] font-extrabold ${active ? "bg-white/25" : "bg-primary/10 text-primary"}`}>
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* ── Hero gradient card ── */}
         <div className="rounded-3xl bg-gradient-to-br from-primary via-primary/90 to-accent p-5 text-primary-foreground">
           <div className="flex items-center gap-3 mb-3">
@@ -476,35 +591,6 @@ const AdminPage = () => {
           {rematchBusy ? "Analyse en cours…" : "Relancer le matching (toutes déclarations)"}
         </button>
 
-        {/* ── Tab bar (horizontal scroll) ── */}
-        <div className="-mx-4 px-4 overflow-x-auto scrollbar-none">
-          <div className="flex gap-1.5 w-max">
-            {TABS.map((t) => {
-              const active = tab === t.key;
-              const badge = tabBadges[t.key];
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold whitespace-nowrap transition-all ${
-                    active
-                      ? "bg-primary text-primary-foreground shadow-md"
-                      : "bg-card border border-border text-muted-foreground"
-                  }`}
-                >
-                  <t.icon className="h-3.5 w-3.5" />
-                  {t.label}
-                  {badge > 0 && (
-                    <span className={`ml-0.5 rounded-full px-1.5 py-0 text-[9px] font-extrabold ${active ? "bg-white/25" : "bg-primary/10 text-primary"}`}>
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* ── Loading skeleton ── */}
         {loading && (
           <div className="space-y-3">
@@ -535,19 +621,21 @@ const AdminPage = () => {
               />
             )}
             {tab === "signalements" && <TabSignalements reports={reports} setReportStatus={setReportStatus} />}
-            {tab === "declarations" && <TabDeclarations declarations={declarations} setStatus={setStatus} />}
+            {tab === "declarations" && <TabDeclarations declarations={declarations} setStatus={setStatus} togglePriority={togglePriority} />}
+            {tab === "restitutions" && <TabRestitutions claims={claims} setClaimStatus={setClaimStatus} />}
             {tab === "donations" && <TabDonations donations={donations} stats={stats} methodStats={methodStats} phoneStats={phoneStats} />}
             {tab === "finances" && <TabFinances revenueBySource={revenueBySource} totalRevenue={totalRevenue} totalDepositsFcfa={totalDepositsFcfa} totalFeesCollected={totalFeesCollected} payments={payments} confirmedPayments={confirmedPayments} pendingPayments={pendingPayments} failedPayments={failedPayments} paymentsByType={paymentsByType} />}
             {tab === "retraits" && <TabRetraits withdrawals={withdrawals} pendingWithdrawals={pendingWithdrawals} pendingTotal={pendingTotal} paidTotal={paidTotal} totalCommission={totalCommission} totalPointsWithdrawn={totalPointsWithdrawn} withdrawalsByMethod={withdrawalsByMethod} paidWithdrawals={paidWithdrawals} rejectedWithdrawals={rejectedWithdrawals} setWithdrawalStatus={setWithdrawalStatus} setRejectTarget={setRejectTarget} setRejectReason={setRejectReason} />}
             {tab === "points" && <TabPoints purchases={purchases} totalPointsSpent={totalPointsSpent} topServices={topServices} SERVICE_LABELS={SERVICE_LABELS} />}
             {tab === "paiements" && <TabPaiements payments={payments} pendingPayments={pendingPayments} confirmedPayments={confirmedPayments} failedPayments={failedPayments} totalDepositsFcfa={totalDepositsFcfa} setPaymentStatus={setPaymentStatus} />}
-            {tab === "abonnements" && <TabAbonnements premiumCount={premiumCount} proCount={proCount} subRevenue={subRevenue} churnRate={churnRate} />}
-            {tab === "services" && <TabServices serviceRevenueMap={serviceRevenueMap} />}
+            {tab === "abonnements" && <TabAbonnements subscriptions={subscriptions} setSubStatus={setSubStatus} premiumCount={premiumCount} proCount={proCount} subRevenue={subRevenue} churnRate={churnRate} />}
+            {tab === "services" && <TabServices serviceRevenueMap={serviceRevenueMap} purchases={purchases} setPurchaseStatus={setPurchaseStatus} />}
             {tab === "pro" && <TabPro proAccounts={proAccounts} activeProAccounts={activeProAccounts} proRevenue={proRevenue} setProAccountStatus={setProAccountStatus} />}
             {tab === "commissions" && <TabCommissions totalCommission={totalCommission} paidWithdrawals={paidWithdrawals} avgWithdrawal={avgWithdrawal} totalWithdrawn={totalWithdrawn} totalPointsWithdrawn={totalPointsWithdrawn} />}
             {tab === "pub" && <TabPub impressions={impressions} clicks={clicks} ctr={ctr} />}
             {tab === "pv" && <TabPV pvs={pvs} />}
             {tab === "installations" && <TabInstallations installations={installations} />}
+            {tab === "diffusion" && <TabDiffusion usersCount={usersList.length} />}
             {tab === "support" && <TabSupport supportMessages={supportMessages} setSupportMessages={setSupportMessages} load={load} />}
           </div>
         )}
@@ -882,25 +970,80 @@ function TabSignalements({ reports, setReportStatus }) {
   );
 }
 
-function TabDeclarations({ declarations, setStatus }) {
+function TabDeclarations({ declarations, setStatus, togglePriority }) {
   const p = usePaginate(declarations);
+  const isPriorityActive = (d) => !!d.priority && (!d.priority_until || new Date(d.priority_until) > new Date());
   return declarations.length === 0 ? (
     <EmptyState text="Aucune déclaration." />
   ) : (
     <div className="space-y-2">
       {p.shown.map((d) => (
-        <div key={d.id} className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2.5 text-sm">
-          <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${d.kind === "lost" ? "bg-destructive" : "bg-accent"}`} />
-          <Link to={`/objet/${d.id}`} className="min-w-0 flex-1 truncate font-semibold">{d.title}</Link>
-          <span className="text-[10px] text-muted-foreground flex-shrink-0">{d.expand?.category?.name}</span>
-          {d.status !== "blocked" ? (
-            <button onClick={() => setStatus(d, "blocked")} className="rounded-lg bg-destructive px-2 py-1 text-[10px] font-bold text-destructive-foreground flex-shrink-0">Bloquer</button>
-          ) : (
-            <button onClick={() => setStatus(d, "open")} className="rounded-lg border border-border px-2 py-1 text-[10px] font-bold flex-shrink-0">Republier</button>
-          )}
+        <div key={d.id} className="rounded-2xl border border-border bg-card px-3 py-2.5 text-sm">
+          <div className="flex items-center gap-2">
+            <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${d.kind === "lost" ? "bg-destructive" : "bg-accent"}`} />
+            <Link to={`/objet/${d.id}`} className="min-w-0 flex-1 truncate font-semibold">{d.title}</Link>
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">{d.expand?.category?.name}</span>
+            {isPriorityActive(d) && (
+              <span className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-accent flex-shrink-0">
+                <Flame className="h-3 w-3" /> En avant
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex gap-1.5">
+            <button
+              onClick={() => togglePriority(d)}
+              className={`rounded-lg px-2 py-1 text-[10px] font-bold flex-shrink-0 ${isPriorityActive(d) ? "border border-border" : "bg-accent px-3 text-accent-foreground"}`}
+            >
+              {isPriorityActive(d) ? "Retirer l'avance" : "Mettre en avant"}
+            </button>
+            {d.status !== "blocked" ? (
+              <button onClick={() => setStatus(d, "blocked")} className="rounded-lg bg-destructive px-2 py-1 text-[10px] font-bold text-destructive-foreground flex-shrink-0">Bloquer</button>
+            ) : (
+              <button onClick={() => setStatus(d, "open")} className="rounded-lg border border-border px-2 py-1 text-[10px] font-bold flex-shrink-0">Republier</button>
+            )}
+          </div>
         </div>
       ))}
       <ListFooter {...p} total={declarations.length} />
+    </div>
+  );
+}
+
+function TabRestitutions({ claims, setClaimStatus }) {
+  const p = usePaginate(claims);
+  return claims.length === 0 ? (
+    <EmptyState text="Aucune demande de restitution." />
+  ) : (
+    <div className="space-y-2">
+      {p.shown.map((c) => (
+        <div key={c.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${c.expand?.declaration?.kind === "lost" ? "bg-destructive" : "bg-accent"}`} />
+            <span className="min-w-0 flex-1 truncate font-semibold">{c.expand?.declaration?.title || c.declaration}</span>
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">{c.expand?.claimant?.name || c.expand?.claimant?.email || c.claimant}</span>
+          </div>
+          {c.security_answer && (
+            <p className="mt-1.5 rounded-xl bg-muted px-2.5 py-1.5 text-[11px] text-muted-foreground">
+              Réponse : <span className="font-semibold text-foreground">{c.security_answer}</span>
+            </p>
+          )}
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${c.status === "pending" ? "bg-primary/15 text-primary" : c.status === "verified" ? "bg-accent/15 text-accent" : c.status === "returned" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-destructive/15 text-destructive"}`}>{c.status}</span>
+            <span className="ml-auto flex gap-1.5">
+              {c.status === "pending" && (
+                <>
+                  <button onClick={() => setClaimStatus(c, "verified")} className="rounded-lg bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground">Accepter</button>
+                  <button onClick={() => setClaimStatus(c, "rejected")} className="rounded-lg border border-border px-2.5 py-1 text-[10px] font-bold">Refuser</button>
+                </>
+              )}
+              {c.status === "verified" && (
+                <button onClick={() => setClaimStatus(c, "returned")} className="rounded-lg bg-accent px-2.5 py-1 text-[10px] font-bold text-accent-foreground">Restituer +100</button>
+              )}
+            </span>
+          </div>
+        </div>
+      ))}
+      <ListFooter {...p} total={claims.length} />
     </div>
   );
 }
@@ -1240,7 +1383,27 @@ function TabPaiements({ payments, pendingPayments, confirmedPayments, failedPaym
                 <span>{pay.item_label || pay.item_key || "—"}</span>
                 {pay.fee_fcfa > 0 && <span>· Frais: {pay.fee_fcfa} FCFA</span>}
                 {pay.moneyfusion_moyen && <span>· {pay.moneyfusion_moyen}</span>}
+                {pay.payment_method === "ussd" && (
+                  <span className="rounded-full bg-[#ff7900]/20 px-1.5 py-0.5 font-bold text-orange-700 dark:bg-[#ff7900]/20 dark:text-[hsl(22_90%_60%)]">USSD</span>
+                )}
               </div>
+              {pay.proof_url && (
+                <div className="mt-2 flex items-center gap-2">
+                  <img
+                    src={pay.proof_url}
+                    alt="Preuve du dépôt"
+                    className="h-16 w-16 rounded-lg border border-border object-cover"
+                  />
+                  <a
+                    href={pay.proof_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg bg-secondary/60 px-3 py-1.5 text-[10px] font-bold text-secondary-foreground"
+                  >
+                    Voir la capture ({pay.payment_method === "ussd" ? "preuve USSD" : "preuve"})
+                  </a>
+                </div>
+              )}
               <div className="mt-1 text-[10px] text-muted-foreground">
                 {new Date(pay.created_at || pay.created).toLocaleDateString("fr-FR")} {new Date(pay.created_at || pay.created).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                 {pay.confirmed_at && <> · Confirmé le {new Date(pay.confirmed_at).toLocaleDateString("fr-FR")}</>}
@@ -1248,8 +1411,18 @@ function TabPaiements({ payments, pendingPayments, confirmedPayments, failedPaym
               {pay.moneyfusion_token && <p className="mt-1 text-[9px] text-muted-foreground truncate">Token: {pay.moneyfusion_token}</p>}
               {pay.status === "pending" && (
                 <div className="mt-2 flex gap-1.5">
-                  <button onClick={() => setPaymentStatus(pay, "confirmed")} className="rounded-lg bg-accent px-3 py-1.5 text-[10px] font-bold text-accent-foreground">Confirmer</button>
-                  <button onClick={() => setPaymentStatus(pay, "failed")} className="rounded-lg bg-destructive px-3 py-1.5 text-[10px] font-bold text-destructive-foreground">Échec</button>
+                  <button
+                    onClick={() => setPaymentStatus(pay, "confirmed")}
+                    className="rounded-lg border border-green-800/60 bg-green-600 px-3 py-2 text-[11px] font-extrabold text-white shadow transition-colors hover:bg-green-700"
+                  >
+                    Valider
+                  </button>
+                  <button
+                    onClick={() => setPaymentStatus(pay, "failed")}
+                    className="rounded-lg border border-red-800/60 bg-red-600 px-3 py-2 text-[11px] font-extrabold text-white shadow transition-colors hover:bg-red-700"
+                  >
+                    Rejeter
+                  </button>
                 </div>
               )}
             </div>
@@ -1261,7 +1434,7 @@ function TabPaiements({ payments, pendingPayments, confirmedPayments, failedPaym
   );
 }
 
-function TabAbonnements({ premiumCount, proCount, subRevenue, churnRate }) {
+function TabAbonnements({ subscriptions, setSubStatus, premiumCount, proCount, subRevenue, churnRate }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
@@ -1284,23 +1457,84 @@ function TabAbonnements({ premiumCount, proCount, subRevenue, churnRate }) {
           <p className="text-[10px] text-muted-foreground">Churn</p>
         </div>
       </div>
+      {subscriptions.length === 0 ? (
+        <EmptyState text="Aucun abonnement." />
+      ) : (
+        <div>
+          <p className="text-xs font-extrabold mb-2">Abonnements ({subscriptions.length})</p>
+          <div className="space-y-2">
+            {subscriptions.map((s) => (
+              <div key={s.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-semibold">{s.expand?.user?.name || s.expand?.user?.email || s.user}</span>
+                  <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-primary flex-shrink-0">{s.plan}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${s.status === "active" ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground"}`}>{s.status}</span>
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {s.status === "active" && s.renews_at
+                    ? `Renouvellement le ${formatDateTimeFr(s.renews_at)}`
+                    : "Abonnement inactif"}
+                </p>
+                <div className="mt-2 flex gap-1.5">
+                  {s.status !== "active" && (
+                    <button onClick={() => setSubStatus(s, "active")} className="rounded-lg bg-accent px-2 py-1 text-[10px] font-bold text-accent-foreground">Activer</button>
+                  )}
+                  {s.status === "active" && (
+                    <button onClick={() => setSubStatus(s, "cancelled")} className="rounded-lg bg-destructive px-2 py-1 text-[10px] font-bold text-destructive-foreground">Annuler</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function TabServices({ serviceRevenueMap }) {
+function TabServices({ serviceRevenueMap, purchases, setPurchaseStatus }) {
   const entries = Object.entries(serviceRevenueMap);
-  return entries.length === 0 ? (
-    <EmptyState text="Aucun service vendu." />
-  ) : (
-    <div className="space-y-2">
-      {entries.map(([key, v]) => (
-        <div key={key} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
-          <span className="flex-1 text-sm font-semibold">{v.label}</span>
-          <span className="text-xs text-muted-foreground">{v.count}x</span>
-          <span className="font-mono font-extrabold text-primary">{v.total.toLocaleString("fr-FR")} FCFA</span>
+  return (
+    <div className="space-y-4">
+      {entries.length === 0 ? (
+        <EmptyState text="Aucun service vendu." />
+      ) : (
+        <div className="space-y-2">
+          {entries.map(([key, v]) => (
+            <div key={key} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
+              <span className="flex-1 text-sm font-semibold">{v.label}</span>
+              <span className="text-xs text-muted-foreground">{v.count}x</span>
+              <span className="font-mono font-extrabold text-primary">{v.total.toLocaleString("fr-FR")} FCFA</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {purchases.length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold mb-2">Achats de services ({purchases.length})</p>
+          <div className="space-y-2">
+            {purchases.map((prc) => {
+              const active = isServiceActive(prc);
+              return (
+                <div key={prc.id} className="rounded-2xl border border-border bg-card p-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate font-semibold">{prc.expand?.user?.name || prc.expand?.user?.email || prc.user}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${active ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground"}`}>{active ? "actif" : prc.status}</span>
+                  </div>
+                  <div className="mt-2 flex gap-1.5">
+                    {!active && (
+                      <button onClick={() => setPurchaseStatus(prc, "active")} className="rounded-lg bg-accent px-2 py-1 text-[10px] font-bold text-accent-foreground">Activer</button>
+                    )}
+                    {active && (
+                      <button onClick={() => setPurchaseStatus(prc, "expired")} className="rounded-lg border border-border px-2 py-1 text-[10px] font-bold">Désactiver</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1544,6 +1778,112 @@ const SUBJECT_LABELS = {
   autre: "Autre",
 };
 
+function TabDiffusion({ usersCount }) {
+  const [title, setTitle] = useState("");
+  const [msg, setMsg] = useState("");
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    if (!title.trim() || !msg.trim()) {
+      toast.error("Titre et message sont requis");
+      return;
+    }
+    if (!confirm(`Envoyer ce message push à ${usersCount} utilisateur(s) inscrit(s) ?\n\n« ${title.trim()} »`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/broadcast-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.trim(), body: msg.trim(), link: link.trim() || "/" }),
+      });
+      const data = await res.json();
+      if (data.statut) {
+        toast.success(`Push envoyé à ${data.sent} utilisateur(s)`);
+        setTitle("");
+        setMsg("");
+        setLink("");
+      } else {
+        toast.error(data.message || "Erreur d'envoi");
+      }
+    } catch (_) {
+      toast.error("Erreur réseau");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-gradient-to-br from-primary to-accent p-4 text-primary-foreground">
+        <p className="flex items-center gap-2 text-sm font-extrabold">
+          <Send className="h-4 w-4" /> Diffusion push
+        </p>
+        <p className="mt-1 text-xs opacity-85">
+          Envoyez un message qui s&apos;affiche sur l&apos;écran des
+          utilisateurs, même hors de l&apos;app. Au clic, l&apos;app s&apos;ouvre
+          sur le lien choisi — {usersCount} utilisateur(s) inscrit(s).
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+        <div>
+          <label className="text-xs font-bold text-muted-foreground">Titre *</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder='Ex : RetrouveMoi vous souhaite un bon week-end'
+            className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-muted-foreground">Message *</label>
+          <textarea
+            rows={4}
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            placeholder='Ex : Si vous rencontrez des difficultés sur RetrouveMoi, notre équipe reste à votre écoute. Bon week-end !'
+            className="mt-1.5 w-full resize-none rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-bold text-muted-foreground">
+            Page à ouvrir au clic (optionnel)
+          </label>
+          <input
+            type="text"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            placeholder="Ex : /recherche (ou vide = accueil)"
+            className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={busy || usersCount === 0}
+          onClick={send}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-sm font-extrabold text-primary-foreground shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {busy ? "Envoi en cours…" : "Envoyer à tous"}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+        <p className="flex items-center gap-2 text-xs font-extrabold text-primary">
+          <Globe className="h-4 w-4" /> Exemples d&apos;utilisation
+        </p>
+        <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+          <li>• « RetrouveMoi vous souhaite un bon week-end »</li>
+          <li>• « Des difficultés sur RetrouveMoi ? Répondez à ce message, on vous aide »</li>
+          <li>• Annonce d&apos;une nouvelle fonctionnalité</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function TabSupport({ supportMessages, setSupportMessages, load }) {
   const [filter, setFilter] = useState("all");
   const [replyTarget, setReplyTarget] = useState(null);
@@ -1696,14 +2036,14 @@ function TabSupport({ supportMessages, setSupportMessages, load }) {
                     <button
                       onClick={() => markRead(msg)}
                       disabled={busyId === msg.id}
-                      className="rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[10px] font-bold text-yellow-600 hover:bg-yellow-500/20 transition"
+                      className="rounded-lg bg-yellow-500/10 px-2.5 py-1.5 text-[10px] font-bold text-yellow-600 hover:bg-yellow-500/20 transition dark:bg-yellow-500/15 dark:text-yellow-400"
                     >
                       Marquer lu
                     </button>
                   )}
                   <button
                     onClick={() => { setReplyTarget(msg); setReplyText(msg.admin_reply || ""); }}
-                    className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition"
+                    className="rounded-lg bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 transition dark:bg-primary/20 dark:text-primary"
                   >
                     {msg.admin_reply ? "Modifier" : "Répondre"}
                   </button>
@@ -1719,7 +2059,7 @@ function TabSupport({ supportMessages, setSupportMessages, load }) {
                   <button
                     onClick={() => deleteMessage(msg)}
                     disabled={busyId === msg.id}
-                    className="rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[10px] font-bold text-destructive hover:bg-destructive/20 transition"
+                    className="rounded-lg bg-destructive/10 px-2.5 py-1.5 text-[10px] font-bold text-red-600 hover:bg-destructive/20 transition dark:bg-red-500/15 dark:text-red-400"
                   >
                     <Trash2 className="h-3 w-3 inline mr-0.5" />
                     Supprimer

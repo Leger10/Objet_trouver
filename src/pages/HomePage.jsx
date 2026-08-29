@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   Bell,
+  Flame,
   HandHeart,
   Heart,
   Lock,
@@ -64,6 +65,7 @@ const HomePage = () => {
   const [stats, setStats] = useState({ lost: 0, found: 0, returned: 0 });
   const [categories, setCategories] = useState([]);
   const [catCounts, setCatCounts] = useState({});
+  const [featured, setFeatured] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -73,6 +75,11 @@ const HomePage = () => {
         pb.collection("declarations").getList(1, 1, { filter: 'kind = "found"', requestKey: "home-found" }),
         pb.collection("declarations").getList(1, 1, { filter: 'status = "returned"', requestKey: "home-ret" }),
         pb.collection("categories").getFullList({ sort: "position", requestKey: "home-cats" }).catch(() => []),
+        pb.collection("declarations").getList(1, 8, {
+          filter: 'priority = true && status != "returned" && status != "blocked"',
+          sort: "-updated",
+          requestKey: "home-featured",
+        }).catch(() => ({ items: [] })),
         fetchCategoryCounts(),
       ]);
 
@@ -85,6 +92,13 @@ const HomePage = () => {
       });
       setCategories(get(3, []));
       setCatCounts(get(4, {}));
+
+      const now = Date.now();
+      setFeatured(
+        (get(5, { items: [] }).items || [])
+          .filter((d) => !d.priority_until || new Date(d.priority_until).getTime() > now)
+          .slice(0, 6)
+      );
 
       // Fallback: generate categories from static meta if DB table is empty/missing
       if (get(3, []).length === 0) {
@@ -208,6 +222,47 @@ const HomePage = () => {
             ))}
           </div>
         </motion.section>
+
+        {/* ── MISSES EN AVANT (déclarations priorisées) ── */}
+        {featured.length > 0 && (
+          <section className="px-4 pt-4 pb-1">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-base font-extrabold">
+                <Flame className="h-4 w-4 text-accent" /> Misses en avant
+              </h2>
+              <Link to="/rechercher" className="text-[11px] font-bold text-accent">Tout voir</Link>
+            </div>
+            <AutoScrollRow autoPlay speed={0.5} className="mt-2">
+              {featured.map((d) => (
+                <Link
+                  key={d.id}
+                  to={`/objet/${d.id}`}
+                  className={"relative block min-w-[230px] flex-shrink-0 snap-start overflow-hidden !p-0 active:scale-[0.98] transition-transform " + card}
+                >
+                  <div className="relative h-28 w-full">
+                    {d.photo_url ? (
+                      <img src={d.photo_url} alt={d.title} className="h-full w-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className={d.kind === "found" ? "h-full w-full bg-gradient-to-br from-emerald-600 to-emerald-900" : "h-full w-full bg-gradient-to-br from-red-600 to-rose-900"} />
+                    )}
+                    <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-accent-foreground">
+                      <Flame className="h-3 w-3" /> En avant
+                    </span>
+                    <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                      {d.kind === "found" ? "Retrouvé" : "Perdu"}
+                    </span>
+                  </div>
+                  <div className="p-3">
+                    <p className="truncate text-sm font-extrabold">{d.title}</p>
+                    <p className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground">
+                      {CATEGORY_META[d.category]?.label || d.category || "Objet"}{d.city ? ` · ${d.city}` : ""}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </AutoScrollRow>
+          </section>
+        )}
 
         {/* ── ACTION BUTTONS ── */}
         <section className="px-4 pt-4 pb-1">

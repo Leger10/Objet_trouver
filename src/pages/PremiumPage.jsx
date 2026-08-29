@@ -7,6 +7,7 @@ import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatNumber } from "@/lib/format";
 import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
+import UssdPayment from "@/components/UssdPayment";
 
 const PHONE =
   "https://images.hostinger.com/9beb81a9-30fa-4a2b-8f4c-e0cc5df05962.png";
@@ -60,6 +61,7 @@ const PremiumPage = () => {
   const [name, setName] = useState(user?.name || "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState("");
+  const [payMode, setPayMode] = useState("online");
 
   const handlePay = async () => {
     if (!checkout || !isAuthed) return;
@@ -169,7 +171,7 @@ const PremiumPage = () => {
               price > 0 ? (
                 <button
                   type="button"
-                  onClick={() => setCheckout({ id, name: offerName, price })}
+                  onClick={() => { setPayMode("online"); setCheckout({ id, name: offerName, price }); }}
                   className="mt-5 rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground active:scale-[0.98] transition-transform"
                 >
                   Payer {formatNumber(computeTotalWithFee(price))} FCFA
@@ -195,7 +197,7 @@ const PremiumPage = () => {
       </div>
 
       <p className="mx-auto max-w-[72rem] px-4 pb-12 text-sm text-muted-foreground">
-        Paiement sécurisé via MoneyFusion (Orange Money, Wave, MTN, Moov, Carte bancaire).
+        Paiement en ligne via MoneyFusion (Orange Money, Wave, MTN, Moov, Carte bancaire) ou par code USSD à composer.
       </p>
 
       {/* Links to dedicated pages */}
@@ -246,6 +248,35 @@ const PremiumPage = () => {
               Payer {checkout.name}
             </p>
 
+            {/* Mode de paiement */}
+            {checkout.price > 0 && (
+              <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
+                <button
+                  type="button"
+                  onClick={() => setPayMode("online")}
+                  className={`rounded-lg px-3 py-2 text-sm font-bold transition-colors ${
+                    payMode === "online"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  En ligne
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPayMode("ussd")}
+                  className={`rounded-lg px-3 py-2 text-sm font-bold transition-colors ${
+                    payMode === "ussd"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  Code USSD
+                </button>
+              </div>
+            )}
+
+            {payMode === "online" ? (<>
             {/* Fee breakdown */}
             <div className="mb-4 rounded-xl bg-secondary/60 px-4 py-3 text-sm">
               <div className="flex justify-between">
@@ -317,6 +348,20 @@ const PremiumPage = () => {
                 )}
               </button>
             </div>
+            </>) : (
+              <UssdPayment
+                amount={checkout.price}
+                itemLabel={checkout.name}
+                payload={{
+                  userId: user?.id || "",
+                  type: checkout.id === "priority" ? "priority" : "subscription",
+                  itemKey: checkout.id,
+                  itemLabel: checkout.name,
+                  amountFcfa: checkout.price,
+                  description: `Offre ${checkout.name}`,
+                }}
+              />
+            )}
           </div>
         </div>
       )}

@@ -34,6 +34,21 @@
   status = 200
 
 [[redirects]]
+  from = "/api/confirm-payment"
+  to = "/.netlify/functions/confirm-payment"
+  status = 200
+
+[[redirects]]
+  from = "/api/ussd-payment-notify"
+  to = "/.netlify/functions/ussd-payment-notify"
+  status = 200
+
+[[redirects]]
+  from = "/api/broadcast-notify"
+  to = "/.netlify/functions/broadcast-notify"
+  status = 200
+
+[[redirects]]
   from = "/api/withdraw"
   to = "/.netlify/functions/withdraw"
   status = 200

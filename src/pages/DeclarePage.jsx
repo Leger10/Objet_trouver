@@ -14,6 +14,7 @@ import {
   Sparkles,
   Tag,
   Upload,
+  X,
 } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
@@ -27,6 +28,7 @@ import { CATEGORY_GROUPS, CATEGORY_META } from "@/lib/categories";
 import { formatNumber } from "@/lib/format";
 import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
 import { detectDocument } from "@/lib/documentDetector";
+import UssdPayment from "@/components/UssdPayment";
 
 const field =
   "w-full rounded-xl border-2 border-input bg-background px-4 py-3 text-base outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground/50";
@@ -69,6 +71,8 @@ const DeclarePage = () => {
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
   const [showMatchPopup, setShowMatchPopup] = useState(false);
+  const [payMode, setPayMode] = useState("online");
+  const [ussdPayment, setUssdPayment] = useState(null);
 
   useEffect(() => {
     pb.collection("categories")
@@ -241,38 +245,43 @@ const DeclarePage = () => {
       onDeclarationCreated({ ...rec, category: form.category }, user).catch(() => {});
 
       if (form.priority) {
-        try {
-          const mfResult = await initPayment({
-            amount: 500,
-            items: [{ "Mise en avant déclaration": 500 }],
-            phone: form.phone || "",
-            name: user.name || user.email || "Utilisateur",
-            userId: user.id,
-            type: "priority",
-            itemId: rec.id,
-            extraInfo: { declarationId: rec.id },
-          });
-          if (mfResult.url) {
-            await pb.collection("payments").create({
-              user: user.id,
-              type: "priority",
-              item_key: rec.id,
-              item_label: `Mise en avant déclaration: ${rec.id}`,
+        if (payMode === "ussd") {
+          // Code USSD : l'enregistrement se fait quand l'utilisateur confirme
+          setUssdPayment(rec.id);
+        } else {
+          try {
+            const mfResult = await initPayment({
               amount: 500,
-              amount_fcfa: 500,
-              fee_fcfa: computeFee(500),
-              total_charged: computeTotalWithFee(500),
-              status: "pending",
-              payment_method: "moneyfusion",
-              moneyfusion_token: mfResult.token || "",
-              description: `Mise en avant déclaration: ${rec.id}`,
+              items: [{ "Mise en avant déclaration": 500 }],
+              phone: form.phone || "",
+              name: user.name || user.email || "Utilisateur",
+              userId: user.id,
+              type: "priority",
+              itemId: rec.id,
+              extraInfo: { declarationId: rec.id },
             });
-            savePaymentContext({ token: mfResult.token, type: "priority", itemKey: rec.id, userId: user.id });
-            window.location.href = mfResult.url;
-            return;
+            if (mfResult.url) {
+              await pb.collection("payments").create({
+                user: user.id,
+                type: "priority",
+                item_key: rec.id,
+                item_label: `Mise en avant déclaration: ${rec.id}`,
+                amount: 500,
+                amount_fcfa: 500,
+                fee_fcfa: computeFee(500),
+                total_charged: computeTotalWithFee(500),
+                status: "pending",
+                payment_method: "moneyfusion",
+                moneyfusion_token: mfResult.token || "",
+                description: `Mise en avant déclaration: ${rec.id}`,
+              });
+              savePaymentContext({ token: mfResult.token, type: "priority", itemKey: rec.id, userId: user.id });
+              window.location.href = mfResult.url;
+              return;
+            }
+          } catch (payErr) {
+            console.error("Payment init error:", payErr);
           }
-        } catch (payErr) {
-          console.error("Payment init error:", payErr);
         }
       }
 
@@ -378,6 +387,39 @@ const DeclarePage = () => {
             </div>
           </div>
         </Layout>
+
+        {/* Paiement prioritaire USSD */}
+        {ussdPayment && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+            <div
+              className="w-full max-w-md rounded-2xl bg-card p-6 sheet-up sm:page-enter max-h-[92dvh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <p className="font-extrabold text-lg">Mise en avant prioritaire</p>
+                <button
+                  type="button"
+                  onClick={() => setUssdPayment(null)}
+                  className="rounded-lg p-1.5 text-muted-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <UssdPayment
+                amount={500}
+                itemLabel="Mise en avant prioritaire"
+                payload={{
+                  userId: user?.id || "",
+                  type: "priority",
+                  itemKey: ussdPayment,
+                  itemLabel: `Mise en avant déclaration: ${ussdPayment}`,
+                  amountFcfa: 500,
+                  description: `Mise en avant déclaration: ${ussdPayment}`,
+                }}
+              />
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -854,9 +896,40 @@ const DeclarePage = () => {
                     </p>
                     <p className="mt-1 text-lg font-extrabold text-primary">500 FCFA</p>
                     {form.priority && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        Total avec frais (3%) : {formatNumber(computeTotalWithFee(500))} FCFA
-                      </p>
+                      <>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Paiement en ligne : Total avec frais (3%) : {formatNumber(computeTotalWithFee(500))} FCFA
+                        </p>
+                        <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
+                          <button
+                            type="button"
+                            onClick={() => setPayMode("online")}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                              payMode === "online"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            En ligne
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPayMode("ussd")}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+                              payMode === "ussd"
+                                ? "bg-background text-foreground shadow-sm"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            Code USSD
+                          </button>
+                        </div>
+                        {payMode === "ussd" && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Composez le code USSD affiché après envoi · 500 FCFA, sans frais.
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                   <button

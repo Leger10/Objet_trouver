@@ -113,21 +113,111 @@ export const createPendingPayment = async ({
   amountFcfa,
   description = "",
   moneyfusionToken = "",
+  method = "moneyfusion",
+  feeFcfa,
+  proofUrl = "",
 }) => {
-  return pb.collection("payments").create({
+  const data = {
     user: userId,
     type,
     item_key: itemKey,
     item_label: itemLabel,
     amount: amountFcfa,
     amount_fcfa: amountFcfa,
-    fee_fcfa: computeFee(amountFcfa),
-    total_charged: computeTotalWithFee(amountFcfa),
+    fee_fcfa: feeFcfa ?? computeFee(amountFcfa),
+    total_charged: feeFcfa === 0 ? amountFcfa : computeTotalWithFee(amountFcfa),
     status: "pending",
-    payment_method: "moneyfusion",
+    payment_method: method,
     description,
     moneyfusion_token: moneyfusionToken,
-  });
+  };
+  // proof_url n'est envoyé que s'il existe (colonne peut manquer en base)
+  if (proofUrl) data.proof_url = proofUrl;
+  return pb.collection("payments").create(data);
+};
+
+// ── Solde HTML <input> helper ───────────────────────────────────────────────
+const extFromName = (name = "") => {
+  const ext = name.split(".").pop();
+  return /^[a-z0-9]{1,6}$/i.test(ext) ? ext : "jpg";
+};
+
+// ── USSD : upload capture, créer l'enregistrement et notifier l'admin ──────
+export const submitUssdPayment = async ({
+  userId,
+  type,
+  itemKey,
+  itemLabel,
+  amountFcfa,
+  description = "",
+  proofFile = null,
+}) => {
+  // 1. Upload de la capture d'écran (si fournie)
+  let proofUrl = "";
+  if (proofFile) {
+    const fileName = `proofs/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromName(proofFile.name)}`;
+    const { data: uploaded } = await pb.supabase.storage
+      .from("uploads")
+      .upload(fileName, proofFile, { cacheControl: "3600", upsert: false });
+    if (uploaded) {
+      const { data: urlData } = pb.supabase.storage
+        .from("uploads")
+        .getPublicUrl(uploaded.path);
+      proofUrl = urlData?.publicUrl || "";
+    }
+  }
+
+  // 2. Enregistrement pending (USSD = pas de frais de passerelle)
+  // Repli : si la colonne proof_url n'existe pas encore en base, on insère
+  // sans, et on place l'URL dans la description.
+  let rec;
+  try {
+    rec = await createPendingPayment({
+      userId,
+      type,
+      itemKey,
+      itemLabel,
+      amountFcfa,
+      description,
+      method: "ussd",
+      feeFcfa: 0,
+      proofUrl,
+    });
+  } catch (err) {
+    if (/proof_url/.test(err?.message || "")) {
+      rec = await createPendingPayment({
+        userId,
+        type,
+        itemKey,
+        itemLabel,
+        amountFcfa,
+        description: proofUrl
+          ? `${description || ""} | Preuve: ${proofUrl}`
+          : description,
+        method: "ussd",
+        feeFcfa: 0,
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  // 3. Notifier l'admin principal (email + push + in-app)
+  try {
+    await fetch("/api/ussd-payment-notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        paymentId: rec.id,
+        type,
+        itemLabel,
+        amount: amountFcfa,
+        proofUrl,
+      }),
+    });
+  } catch (_) {}
+
+  return { rec, proofUrl };
 };
 
 // ── Confirm payment after verification ─────────────────────────────────────

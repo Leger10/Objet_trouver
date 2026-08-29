@@ -8,7 +8,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";
-import PaymentMethodPicker from "@/components/PaymentMethodPicker";
+import PaymentOptions from "@/components/PaymentOptions";
 import { SUBSCRIPTION_PLANS } from "@/lib/payments";
 import { createPendingPayment } from "@/lib/moneyfusion";
 import { formatNumber, formatDate } from "@/lib/format";
@@ -350,21 +350,33 @@ const SubscriptionPage = () => {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <PaymentMethodPicker
+            <PaymentOptions
               amount={checkout.price}
-              onBeforePay={async () => {
-                if (!user) return;
-                await createPendingPayment({
-                  userId: user.id,
+              online={{
+                onBeforePay: async () => {
+                  if (!user) return;
+                  await createPendingPayment({
+                    userId: user.id,
+                    type: "subscription",
+                    itemKey: checkout.key,
+                    itemLabel: `Abonnement ${checkout.name}`,
+                    amountFcfa: checkout.price,
+                  });
+                },
+                type: "subscription",
+                itemId: checkout.key,
+                ctaLabel: "Payer l'abonnement",
+              }}
+              ussd={{
+                itemLabel: `Abonnement ${checkout.name}`,
+                payload: {
+                  userId: user?.id || "",
                   type: "subscription",
                   itemKey: checkout.key,
                   itemLabel: `Abonnement ${checkout.name}`,
                   amountFcfa: checkout.price,
-                });
+                },
               }}
-              type="subscription"
-              itemId={checkout.key}
-              ctaLabel="Payer l'abonnement"
             />
           </div>
         </div>

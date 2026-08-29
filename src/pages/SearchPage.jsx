@@ -260,7 +260,7 @@ const SearchPage = () => {
             </div>
 
             {showFilters && (
-              <div className="mt-4 grid gap-3 rounded-2xl border border-border bg-background p-4 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border border-border bg-background p-4 sm:grid-cols-3 lg:grid-cols-4">
                 <select
                   className={field}
                   value={filters.kind}
@@ -380,7 +380,7 @@ const SearchPage = () => {
               ? "Recherche…"
               : `${total} résultat${total > 1 ? "s" : ""}`}
           </p>
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
             {loading &&
               [0, 1, 2, 3].map((k) => (
                 <div
