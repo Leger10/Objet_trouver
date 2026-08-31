@@ -9,9 +9,9 @@ export const WAVE_NUMBER = "00226 54 32 92 99";
 // Payer ici Orange Money à composer : *144*10*NUMERO_MARCHAND*MONTANT#
 export const ussdCode = (amount) => `*144*10*${ORANGE_NUMBER}*${amount || 0}#`;
 
-// Lien tap-to-dial (mobile) : # est encodé en %23 pour la passerelle USSD
-export const ussdTelLink = (amount) =>
-  `tel:${ussdCode(amount).replace(/#/g, "%23")}`;
+// Lien tap-to-dial (mobile) : le '#' de fin reste littéral pour déclencher
+// l'USSD sur iOS et Android ; '*' n'a pas besoin d'être encodé dans tel:.
+export const ussdTelLink = (amount) => `tel:${ussdCode(amount)}`;
 
 // Instructions pas-à-pas affichées sous le code
 export const USSD_STEPS = [

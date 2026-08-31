@@ -70,7 +70,15 @@ const UssdPayment = ({
   };
 
   const handleDial = () => {
-    window.location.href = ussdTelLink(amount);
+    // iOS n'ouvre pas toujours le composeur via window.location.href pour un
+    // code USSD. On passe par une balise <a href="tel:"> native (cliquée
+    // programmatiquement), reconnue par Android et iOS.
+    const link = document.createElement("a");
+    link.href = ussdTelLink(amount);
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleConfirm = async () => {
