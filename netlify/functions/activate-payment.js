@@ -120,6 +120,7 @@ async function activateService(payment) {
         amount_fcfa: payment.amount_fcfa || payment.amount || 0,
         payment_method: "moneyfusion",
         status: "completed",
+        anonymous: !userId,
       });
       return { activated: true, type: "donation" };
     }

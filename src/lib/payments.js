@@ -93,7 +93,7 @@ export const createPayment = async ({
   description = "",
 }) => {
   return pb.collection("payments").create({
-    user,
+    user: user || null,
     type,
     item_key: itemKey,
     item_label: itemLabel,

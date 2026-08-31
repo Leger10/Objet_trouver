@@ -45,8 +45,8 @@ const PaymentMethodPicker = ({
       toast.error("Indiquez votre nom.");
       return;
     }
-    if (amount < 100) {
-      toast.error("Montant minimum : 100 FCFA.");
+    if (amount < 200) {
+      toast.error("Montant minimum : 200 FCFA.");
       return;
     }
 

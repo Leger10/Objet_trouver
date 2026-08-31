@@ -134,7 +134,7 @@ class SupabaseCollection {
       }).join(',');
       return query.or(orFilter);
     }
-    if (cond.field && cond.operator && cond.value) {
+    if (cond.field && cond.operator && cond.value !== undefined && cond.value !== null && cond.value !== '') {
       const field = cond.quoted ? `"${cond.field}"` : cond.field;
       switch (cond.operator) {
         case '=': return query.eq(field, cond.value);
@@ -398,6 +398,13 @@ class SupabaseCollection {
     return items;
   }
 
+  // Convertit les valeurs string "true"/"false" en booléens pour les colonnes booléennes
+  _normValue(v) {
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    return v;
+  }
+
   parsePocketBaseFilter(filter) {
     const conditions = [];
     const parts = filter.split(/\s*&&\s*/);
@@ -413,7 +420,7 @@ class SupabaseCollection {
         for (const orPart of orParts) {
           const m = orPart.trim().match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
           if (m) {
-            orConds.push({ field: m[1], operator: m[2], value: m[3] });
+            orConds.push({ field: m[1], operator: m[2], value: this._normValue(m[3]) });
           }
         }
         if (orConds.length > 0) {
@@ -428,7 +435,7 @@ class SupabaseCollection {
         conditions.push({
           field: matchQuoted[1],
           operator: matchQuoted[2],
-          value: matchQuoted[3],
+          value: this._normValue(matchQuoted[3]),
           quoted: true,
         });
         continue;
@@ -438,7 +445,7 @@ class SupabaseCollection {
         conditions.push({
           field: match[1],
           operator: match[2],
-          value: match[3]
+          value: this._normValue(match[3])
         });
       }
     }

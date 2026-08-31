@@ -118,7 +118,7 @@ export const createPendingPayment = async ({
   proofUrl = "",
 }) => {
   const data = {
-    user: userId,
+    user: userId || null,
     type,
     item_key: itemKey,
     item_label: itemLabel,

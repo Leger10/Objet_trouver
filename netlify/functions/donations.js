@@ -57,6 +57,7 @@ export const handler = async (event) => {
           payment_method: payment_method || "other",
           message: message || null,
           status: "completed",
+          anonymous: !usr_id,
         })
         .select()
         .single();

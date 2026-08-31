@@ -198,6 +198,8 @@ const AdminPage = () => {
         categories: cats.totalItems,
         donations: dons.totalItems,
         donationTotal: totals?.total_fcfa || 0,
+        donationsConnected: dons.items.filter((d) => !d.anonymous).length,
+        donationsAnonymous: dons.items.filter((d) => d.anonymous).length,
       });
       setDeclarations(decl.items);
       setClaims(clms || []);
@@ -1062,6 +1064,20 @@ function TabDonations({ donations, stats, methodStats, phoneStats }) {
           <p className="text-[10px] opacity-80">Donateurs</p>
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-border bg-card p-3">
+          <p className="text-lg font-extrabold text-primary">{stats.donationsConnected || 0}</p>
+          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="inline-block h-2 w-2 rounded-full bg-accent" /> Connectés
+          </p>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-3">
+          <p className="text-lg font-extrabold text-muted-foreground">{stats.donationsAnonymous || 0}</p>
+          <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" /> Anonymes
+          </p>
+        </div>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         {[
           ["orange_money", "Orange", "bg-[hsl(22_90%_50%)]"],
@@ -1096,7 +1112,8 @@ function TabDonations({ donations, stats, methodStats, phoneStats }) {
           <div className="space-y-1.5">
             {p.shown.map((d) => (
               <div key={d.id} className="flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 text-xs">
-                <span className="min-w-0 flex-1 truncate font-semibold">{d.donor_name}</span>
+                <span className="min-w-0 flex-1 truncate font-semibold">{d.donor_name || "Anonyme"}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${d.anonymous ? "bg-muted text-muted-foreground" : "bg-accent/15 text-accent"}`}>{d.anonymous ? "Anonyme" : "Connecté"}</span>
                 <span className="font-extrabold text-primary">{(d.amount_fcfa || 0).toLocaleString("fr-FR")}</span>
                 <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${d.status === "completed" ? "bg-accent/15 text-accent" : "bg-muted text-muted-foreground"}`}>{d.status}</span>
               </div>

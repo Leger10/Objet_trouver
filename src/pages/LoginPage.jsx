@@ -15,6 +15,7 @@ const LoginPage = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const notice = searchParams.get('notice');
+    const redirect = searchParams.get('redirect');
     const [form, setForm] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -34,7 +35,7 @@ const LoginPage = () => {
         setBusy(true);
         try {
             await login(form.email, form.password);
-            navigate('/tableau-de-bord');
+            navigate(redirect && redirect.startsWith('/') ? redirect : '/tableau-de-bord');
         } catch (err) {
             const msg = err?.message || '';
             if (msg.includes('bloqué')) {

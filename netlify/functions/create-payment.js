@@ -39,7 +39,12 @@ export const handler = async (event) => {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = { statut: false, message: `Réponse invalide de la passerelle (${res.status})` };
+    }
     return { statusCode: 200, headers, body: JSON.stringify(data) };
   } catch (err) {
     return {

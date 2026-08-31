@@ -13,6 +13,20 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // Register Service Worker for PWA
 if ("serviceWorker" in navigator) {
 	window.addEventListener("load", () => {
-		navigator.serviceWorker.register("/sw.js").catch(() => {});
+		navigator.serviceWorker
+			.register("/sw.js", { updateViaCache: "none" })
+			.then((reg) => {
+				// Si un nouveau SW est prêt, on le réactive sans attendre le prochain chargement
+				if (reg.waiting) {
+					reg.waiting.postMessage({ type: "SKIP_WAITING" });
+				}
+			})
+			.catch(() => {});
+	});
+	let refreshing = false;
+	navigator.serviceWorker.addEventListener("controllerchange", () => {
+		if (refreshing) return;
+		refreshing = true;
+		window.location.reload();
 	});
 }

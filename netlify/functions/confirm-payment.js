@@ -113,6 +113,7 @@ async function activateService(payment) {
         amount_fcfa: payment.amount_fcfa || payment.amount || 0,
         payment_method: payment.payment_method || "manual",
         status: "completed",
+        anonymous: !userId,
       });
 
       // Met à jour le compteur public (chiffre d'affaires / dons)

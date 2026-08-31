@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Heart, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Heart, CheckCircle2, EyeOff, UserCheck } from "lucide-react";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatNumber } from "@/lib/format";
@@ -15,6 +15,7 @@ const DonatePage = () => {
   const { user } = useAuth();
   const [totals, setTotals] = useState({ total_fcfa: 0, donors: 0 });
   const [custom, setCustom] = useState("");
+  const [identity, setIdentity] = useState(user ? "identified" : "anonymous");
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -37,6 +38,10 @@ const DonatePage = () => {
   }, []);
 
   const finalAmount = parseInt(custom, 10) || 0;
+
+  // L'id utilisateur n'est transmis que si le donateur choisit de s'identifier
+  const donorId = identity === "identified" ? user?.id || "" : "";
+  const effectiveIdentity = identity === "identified" && user ? "identified" : "anonymous";
 
   return (
     <Layout>
@@ -129,7 +134,7 @@ const DonatePage = () => {
           <p className="text-sm font-bold">Votre montant (FCFA)</p>
           <input
             type="number"
-            min="100"
+            min="200"
             step="100"
             autoFocus
             value={custom}
@@ -138,18 +143,60 @@ const DonatePage = () => {
             className="mt-3 w-full rounded-xl border border-input bg-background px-4 py-4 text-xl font-extrabold outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
           />
           <p className="mt-3 text-xs text-muted-foreground">
-            Montant minimum : 100 FCFA. Chaque don est vérifié puis validé par
+            Montant minimum : 200 FCFA. Chaque don est vérifié puis validé par
             notre équipe avant d&#39;être comptabilisé.
           </p>
-          {finalAmount >= 100 && (
+          {finalAmount >= 200 && (
             <p className="mt-3 rounded-xl bg-secondary/60 px-3 py-2 text-sm font-bold text-secondary-foreground">
               Votre don : {formatNumber(finalAmount)} FCFA
             </p>
           )}
         </div>
 
+        {/* Identity choice : anonyme ou identifié */}
+        {finalAmount >= 200 && (
+          <div className="mt-6 rounded-2xl border border-border bg-card p-5">
+            <p className="text-sm font-extrabold">Anonymat du don</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choisissez comment votre don sera enregistré.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIdentity("anonymous")}
+                className={"flex flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition active:scale-[0.98] " + (effectiveIdentity === "anonymous" ? "border-muted-foreground bg-secondary/70" : "border-border bg-background")}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-bold">
+                  <EyeOff className="h-4 w-4 text-muted-foreground" /> Anonyme
+                </span>
+                <span className="text-[10px] leading-tight text-muted-foreground">
+                  Sans compte, aucun nom visible.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user) {
+                    setIdentity("identified");
+                  } else {
+                    window.location.href = "/connexion?redirect=" + encodeURIComponent("/don") + "&notice=" + encodeURIComponent("Connectez-vous pour faire un don identifié — vous serez redirigé vers la page don.");
+                  }
+                }}
+                className={"flex flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition active:scale-[0.98] " + (effectiveIdentity === "identified" ? "border-accent bg-accent/10" : "border-border bg-background")}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-bold">
+                  <UserCheck className="h-4 w-4 text-accent" /> Identifié
+                </span>
+                <span className="text-[10px] leading-tight text-muted-foreground">
+                  {user ? `Associé à ${user.name || user.email || "votre compte"}` : "Connectez-vous pour être identifié."}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Payment via MoneyFusion — handles phone, name, fee breakdown & redirect */}
-        {finalAmount >= 100 && (
+        {finalAmount >= 200 && (
           <div className="mt-6">
             <PaymentOptions
               amount={finalAmount}
@@ -161,7 +208,7 @@ const DonatePage = () => {
                 ctaLabel: "Faire ce don",
                 onBeforePay: async () => {
                   await createPendingPayment({
-                    userId: user?.id || "",
+                    userId: donorId,
                     type: "donation",
                     itemKey: "donation",
                     itemLabel: `Don ${formatNumber(finalAmount)} FCFA`,
@@ -173,7 +220,7 @@ const DonatePage = () => {
               ussd={{
                 itemLabel: `Don ${formatNumber(finalAmount)} FCFA`,
                 payload: {
-                  userId: user?.id || "",
+                  userId: donorId,
                   type: "donation",
                   itemKey: "donation",
                   itemLabel: `Don ${formatNumber(finalAmount)} FCFA`,
@@ -185,10 +232,10 @@ const DonatePage = () => {
           </div>
         )}
 
-        {finalAmount < 100 && (
+        {finalAmount < 200 && (
           <div className="mt-6 rounded-2xl border border-border bg-card p-5 text-center">
             <p className="text-sm text-muted-foreground">
-              Le montant minimum est de 100 FCFA.
+              Le montant minimum est de 200 FCFA.
             </p>
           </div>
         )}

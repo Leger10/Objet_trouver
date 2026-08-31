@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   Bell,
+  Clock,
   Flame,
   HandHeart,
   Heart,
   Lock,
+  MapPin,
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   TrendingUp,
 } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
@@ -29,6 +32,40 @@ import { useBranding } from "@/contexts/BrandingContext";
 import { DEFAULT_HERO } from "@/lib/brandingDefaults";
 import AutoScrollRow from "@/components/AutoScrollRow";
 import InstallPopup from "@/components/InstallPopup";
+
+// ── Budget quotidien des boosts (impressions par visiteur) ──
+const BOOST_DAILY_VIEWS = 3;
+const BOOST_VIEWS_KEY = "retrouvemoi-boost-views";
+
+const todayKey = () => new Date().toISOString().slice(0, 10);
+
+// Lit le compteur { date: 'YYYY-MM-DD', count: N } d'un boost pour aujourd'hui.
+const readBoostViews = (id) => {
+  try {
+    const raw = localStorage.getItem(BOOST_VIEWS_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    const rec = all[id];
+    if (!rec) return 0;
+    if (rec.date !== todayKey()) return 0; // réinitialisé chaque jour
+    return rec.count || 0;
+  } catch {
+    return 0;
+  }
+};
+
+// Incrémente le compteur de vues pour aujourd'hui.
+const recordBoostView = (id) => {
+  try {
+    const raw = localStorage.getItem(BOOST_VIEWS_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    const rec = all[id];
+    const count = rec && rec.date === todayKey() ? rec.count || 0 : 0;
+    all[id] = { date: todayKey(), count: count + 1 };
+    localStorage.setItem(BOOST_VIEWS_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+};
 
 const steps = [
   {
@@ -66,6 +103,7 @@ const HomePage = () => {
   const [categories, setCategories] = useState([]);
   const [catCounts, setCatCounts] = useState({});
   const [featured, setFeatured] = useState([]);
+  const [featIndex, setFeatIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -75,9 +113,9 @@ const HomePage = () => {
         pb.collection("declarations").getList(1, 1, { filter: 'kind = "found"', requestKey: "home-found" }),
         pb.collection("declarations").getList(1, 1, { filter: 'status = "returned"', requestKey: "home-ret" }),
         pb.collection("categories").getFullList({ sort: "position", requestKey: "home-cats" }).catch(() => []),
-        pb.collection("declarations").getList(1, 8, {
+        pb.collection("declarations").getList(1, 30, {
           filter: 'priority = true && status != "returned" && status != "blocked"',
-          sort: "-updated",
+          sort: "-created",
           requestKey: "home-featured",
         }).catch(() => ({ items: [] })),
         fetchCategoryCounts(),
@@ -91,14 +129,16 @@ const HomePage = () => {
         returned: get(2, { totalItems: 0 }).totalItems || 0,
       });
       setCategories(get(3, []));
-      setCatCounts(get(4, {}));
+      setCatCounts(get(5, {}));
 
       const now = Date.now();
-      setFeatured(
-        (get(5, { items: [] }).items || [])
-          .filter((d) => !d.priority_until || new Date(d.priority_until).getTime() > now)
-          .slice(0, 6)
-      );
+      // Boost encore actif (non expiré) et n'ayant pas épuisé son budget quotidien (3 vues/visiteur/jour)
+      const shown = (get(4, { items: [] }).items || [])
+        .filter((d) => !d.priority_until || new Date(d.priority_until).getTime() > now)
+        .filter((d) => readBoostViews(d.id) < BOOST_DAILY_VIEWS);
+      // Chaque chargement du home = 1 vue pour les boosts affichés
+      shown.forEach((d) => recordBoostView(d.id));
+      setFeatured(shown);
 
       // Fallback: generate categories from static meta if DB table is empty/missing
       if (get(3, []).length === 0) {
@@ -122,6 +162,16 @@ const HomePage = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Rotation en boucle des boosts : 1 affiché à la fois, puis le suivant
+  useEffect(() => {
+    if (featured.length === 0) return;
+    setFeatIndex((i) => (i >= featured.length ? 0 : i));
+    const t = setInterval(() => {
+      setFeatIndex((i) => (i + 1) % featured.length);
+    }, 4500);
+    return () => clearInterval(t);
+  }, [featured.length]);
 
   return (
     <Layout>
@@ -226,41 +276,73 @@ const HomePage = () => {
         {/* ── MISSES EN AVANT (déclarations priorisées) ── */}
         {featured.length > 0 && (
           <section className="px-4 pt-4 pb-1">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="flex items-center gap-1.5 text-base font-extrabold">
-                <Flame className="h-4 w-4 text-accent" /> Misses en avant
-              </h2>
-              <Link to="/rechercher" className="text-[11px] font-bold text-accent">Tout voir</Link>
-            </div>
-            <AutoScrollRow autoPlay speed={0.5} className="mt-2">
-              {featured.map((d) => (
-                <Link
-                  key={d.id}
-                  to={`/objet/${d.id}`}
-                  className={"relative block min-w-[230px] flex-shrink-0 snap-start overflow-hidden !p-0 active:scale-[0.98] transition-transform " + card}
-                >
-                  <div className="relative h-28 w-full">
-                    {d.photo_url ? (
-                      <img src={d.photo_url} alt={d.title} className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className={d.kind === "found" ? "h-full w-full bg-gradient-to-br from-emerald-600 to-emerald-900" : "h-full w-full bg-gradient-to-br from-red-600 to-rose-900"} />
-                    )}
-                    <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-accent-foreground">
-                      <Flame className="h-3 w-3" /> En avant
-                    </span>
-                    <span className="absolute right-2 top-2 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
-                      {d.kind === "found" ? "Retrouvé" : "Perdu"}
-                    </span>
-                  </div>
-                  <div className="p-3">
-                    <p className="truncate text-sm font-extrabold">{d.title}</p>
-                    <p className="mt-0.5 truncate text-[10px] font-semibold text-muted-foreground">
-                      {CATEGORY_META[d.category]?.label || d.category || "Objet"}{d.city ? ` · ${d.city}` : ""}
-                    </p>
-                  </div>
+            <div className="rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500 via-orange-600 to-red-600 p-4 shadow-xl shadow-orange-900/30">
+              {/* en-tête */}
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wider text-white">
+                  <span className="relative grid h-7 w-7 place-items-center rounded-xl bg-white/20 backdrop-blur">
+                    <Flame className="h-4 w-4 text-yellow-200 animate-pulse" />
+                    <span className="absolute inset-0 animate-ping rounded-xl bg-white/20 [animation-duration:2.5s]" />
+                  </span>
+                  Mises en avant
+                </h2>
+                <Link to="/rechercher" className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white transition active:scale-95">
+                  Tout voir <ArrowRight className="h-3 w-3" />
                 </Link>
-              ))}
-            </AutoScrollRow>
+              </div>
+              <p className="mt-1 text-[10px] font-semibold text-white/80">
+                Les déclarations prioritaires — touchez un aperçu pour voir le détail.
+              </p>
+
+              {/* rotation alternée : un boost à la fois, en boucle */}
+              <div className="relative mt-3">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={featured[featIndex].id}
+                    initial={{ opacity: 0, x: 40 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -40 }}
+                    transition={{ duration: 0.45, ease: "easeOut" }}
+                  >
+                    <Link
+                      to={`/objet/${featured[featIndex].id}`}
+                      className="group block overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 transition active:scale-[0.99]"
+                    >
+                      <div className="flex gap-3 p-3">
+                        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-red-500 to-rose-800">
+                          {featured[featIndex].photo_url ? (
+                            <img src={featured[featIndex].photo_url} alt={featured[featIndex].title} className="h-full w-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className={"h-full w-full " + (featured[featIndex].kind === "found" ? "bg-gradient-to-br from-emerald-500 to-emerald-800" : "bg-gradient-to-br from-red-500 to-rose-800")} />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-white shadow">
+                              <Flame className="h-2.5 w-2.5 animate-pulse" /> En avant
+                            </span>
+                            <span className={"rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide " + (featured[featIndex].kind === "found" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700")}>
+                              {featured[featIndex].kind === "found" ? "✨ Retrouvé" : "Perdu"}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 line-clamp-2 text-sm font-extrabold leading-snug text-foreground">{featured[featIndex].title}</p>
+                          <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{featured[featIndex].city || "Localité"}{featured[featIndex].zone ? ` · ${featured[featIndex].zone}` : ""}</span>
+                          </p>
+                        </div>
+                        <span className="self-center text-muted-foreground transition group-hover:translate-x-0.5">
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between border-t border-black/5 px-3 py-2 text-[11px] font-bold text-[hsl(206_84%_32%)]">
+                        <span>Voir le détail</span>
+                      </div>
+                    </Link>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
           </section>
         )}
 

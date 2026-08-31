@@ -1,4 +1,4 @@
-const CACHE_NAME = "retrouvemoi-v6";
+const CACHE_NAME = "retrouvemoi-v7";
 const PRECACHE = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {
@@ -13,6 +13,13 @@ self.addEventListener("activate", (e) => {
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
+});
+
+// Permet au client de forcer l'activation immédiate du nouveau SW
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (e) => {

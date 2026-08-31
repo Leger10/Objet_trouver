@@ -168,6 +168,7 @@ async function activateService(payment) {
         payment_method: "moneyfusion",
         message: "",
         status: "completed",
+        anonymous: !userId,
       });
 
       // Update totals
