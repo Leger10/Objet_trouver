@@ -91,7 +91,10 @@ function App() {
                                 <Route
                                     path="/declarer/:kind"
                                     element={
-                                        <ProtectedRoute redirectTo="/connexion">
+                                        <ProtectedRoute
+                                            redirectTo="/connexion"
+                                            reason="Pour déclarer un objet perdu ou retrouvé, connectez-vous d'abord (ou créez un compte gratuit)."
+                                        >
                                             <DeclarePage />
                                         </ProtectedRoute>
                                     }
@@ -100,7 +103,10 @@ function App() {
                                 <Route
                                     path="/declarer/modifier/:id"
                                     element={
-                                        <ProtectedRoute redirectTo="/connexion">
+                                        <ProtectedRoute
+                                            redirectTo="/connexion"
+                                            reason="Pour modifier une déclaration, connectez-vous d'abord."
+                                        >
                                             <EditDeclarationPage />
                                         </ProtectedRoute>
                                     }

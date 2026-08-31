@@ -6,7 +6,7 @@ export const MOVE_NUMBER = "00226 73 79 09 78";
 export const WAVE_NUMBER = "00226 54 32 92 99";
 
 // ── USSD helpers ───────────────────────────────────────────────────────────
-// Code USSD Orange Money à composer : *144*10*NUMERO_MARCHAND*MONTANT#
+// Payer ici Orange Money à composer : *144*10*NUMERO_MARCHAND*MONTANT#
 export const ussdCode = (amount) => `*144*10*${ORANGE_NUMBER}*${amount || 0}#`;
 
 // Lien tap-to-dial (mobile) : # est encodé en %23 pour la passerelle USSD

@@ -16,7 +16,7 @@ import { formatNumber } from "@/lib/format";
 import { submitUssdPayment } from "@/lib/moneyfusion";
 
 /**
- * Paiement par code USSD à composer sur le téléphone,
+ * Paiement par Payer ici à composer sur le téléphone,
  * suivi de l'envoi de la capture d'écran du dépôt à l'admin.
  *
  * Props :
@@ -128,7 +128,7 @@ const UssdPayment = ({
         </p>
       </div>
 
-      {/* Code USSD */}
+      {/* Payer ici */}
       <p className="mb-2 text-xs font-bold text-muted-foreground">
         Composez ce code sur votre téléphone :
       </p>
@@ -152,9 +152,13 @@ const UssdPayment = ({
           className="flex items-center justify-center gap-2 rounded-xl border border-border px-3 py-3 text-sm font-bold active:scale-[0.98] transition-transform"
         >
           {copied ? (
-            <><Check className="h-4 w-4 text-accent" /> Copié !</>
+            <>
+              <Check className="h-4 w-4 text-accent" /> Copié !
+            </>
           ) : (
-            <><Copy className="h-4 w-4" /> Copier</>
+            <>
+              <Copy className="h-4 w-4" /> Copier
+            </>
           )}
         </button>
       </div>
@@ -172,7 +176,9 @@ const UssdPayment = ({
       {/* Capture d'écran du dépôt */}
       <div className="mt-4">
         <p className="mb-2 text-xs font-bold text-muted-foreground">
-          {proofRequired ? "Capture d'écran du dépôt (requise)" : "Capture d'écran du dépôt"}
+          {proofRequired
+            ? "Capture d'écran du dépôt (requise)"
+            : "Capture d'écran du dépôt"}
         </p>
         <input
           ref={inputRef}
@@ -190,7 +196,10 @@ const UssdPayment = ({
             />
             <button
               type="button"
-              onClick={() => { setProof(null); setProofUrl(""); }}
+              onClick={() => {
+                setProof(null);
+                setProofUrl("");
+              }}
               className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
               aria-label="Retirer la capture"
             >

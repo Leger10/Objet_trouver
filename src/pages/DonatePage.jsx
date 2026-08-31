@@ -107,7 +107,7 @@ const DonatePage = () => {
           </div>
         </div>
 
-        {/* Impact */}
+        {/* Impact
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
           {[
             ["1 000 FCFA", "Couvre l'hébergement d'une journée"],
@@ -122,7 +122,7 @@ const DonatePage = () => {
               <p className="mt-1 text-xs text-muted-foreground">{v}</p>
             </div>
           ))}
-        </div>
+        </div> */}
 
         {/* Simple amount form */}
         <div className="mt-6 rounded-2xl border border-border bg-card p-5">

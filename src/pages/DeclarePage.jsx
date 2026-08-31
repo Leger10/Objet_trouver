@@ -26,7 +26,12 @@ import CategoryGrid from "@/components/CategoryGrid";
 import MatchVerifyPopup from "@/components/MatchVerifyPopup";
 import { CATEGORY_GROUPS, CATEGORY_META } from "@/lib/categories";
 import { formatNumber } from "@/lib/format";
-import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
+import {
+  initPayment,
+  computeTotalWithFee,
+  computeFee,
+  savePaymentContext,
+} from "@/lib/moneyfusion";
 import { detectDocument } from "@/lib/documentDetector";
 import UssdPayment from "@/components/UssdPayment";
 
@@ -35,7 +40,8 @@ const field =
 const labelCls = "flex flex-col gap-1.5 text-sm font-bold";
 const card = "rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-sm";
 const hint = "text-[11px] text-muted-foreground leading-snug";
-const sectionTitle = "flex items-center gap-2 text-sm font-extrabold tracking-tight";
+const sectionTitle =
+  "flex items-center gap-2 text-sm font-extrabold tracking-tight";
 
 const PERSON_CATEGORIES = ["enfant-disparu", "personne-disparue"];
 
@@ -88,7 +94,7 @@ const DeclarePage = () => {
                 slug,
                 name: CATEGORY_META[slug]?.label || slug,
                 position: (cats.length || 0) + i,
-              }))
+              })),
           );
           setCategories([...cats, ...localMissing]);
         } else {
@@ -103,27 +109,30 @@ const DeclarePage = () => {
               slug,
               name: CATEGORY_META[slug]?.label || slug,
               position: pos,
-            }))
-          )
+            })),
+          ),
         );
       });
   }, []);
 
   const selectedCat = useMemo(
     () => categories.find((c) => c.id === form.category),
-    [categories, form.category]
+    [categories, form.category],
   );
 
   const catSlug = selectedCat?.slug || selectedCat?.id || form.category;
 
   const isDocument = useMemo(
-    () => ["cni", "passeport", "permis", "carte-grise", "documents"].includes(catSlug),
-    [catSlug]
+    () =>
+      ["cni", "passeport", "permis", "carte-grise", "documents"].includes(
+        catSlug,
+      ),
+    [catSlug],
   );
 
   const isPerson = useMemo(
     () => PERSON_CATEGORIES.includes(catSlug),
-    [catSlug]
+    [catSlug],
   );
 
   const set = (k) => (e) =>
@@ -165,7 +174,11 @@ const DeclarePage = () => {
     e.preventDefault();
     setError("");
     if (!user) {
-      navigate("/connexion");
+      navigate(
+        `/connexion?notice=${encodeURIComponent(
+          "Pour déclarer un objet perdu ou retrouvé, connectez-vous d'abord (ou créez un compte gratuit).",
+        )}`,
+      );
       return;
     }
     if (!form.category || !form.city || !form.phone) {
@@ -242,11 +255,13 @@ const DeclarePage = () => {
 
       // Always run matching first, before any payment redirect
       const matches = await runMatching({ ...rec, category: form.category });
-      onDeclarationCreated({ ...rec, category: form.category }, user).catch(() => {});
+      onDeclarationCreated({ ...rec, category: form.category }, user).catch(
+        () => {},
+      );
 
       if (form.priority) {
         if (payMode === "ussd") {
-          // Code USSD : l'enregistrement se fait quand l'utilisateur confirme
+          // Payer ici : l'enregistrement se fait quand l'utilisateur confirme
           setUssdPayment(rec.id);
         } else {
           try {
@@ -275,7 +290,12 @@ const DeclarePage = () => {
                 moneyfusion_token: mfResult.token || "",
                 description: `Mise en avant déclaration: ${rec.id}`,
               });
-              savePaymentContext({ token: mfResult.token, type: "priority", itemKey: rec.id, userId: user.id });
+              savePaymentContext({
+                token: mfResult.token,
+                type: "priority",
+                itemKey: rec.id,
+                userId: user.id,
+              });
               window.location.href = mfResult.url;
               return;
             }
@@ -286,10 +306,16 @@ const DeclarePage = () => {
       }
 
       const verb = isPerson
-        ? isLost ? "Disparition déclarée" : "Personne retrouvée déclarée"
-        : isLost ? "Perte enregistrée" : "Objet retrouvé enregistré";
+        ? isLost
+          ? "Disparition déclarée"
+          : "Personne retrouvée déclarée"
+        : isLost
+          ? "Perte enregistrée"
+          : "Objet retrouvé enregistré";
       toast.success(verb, {
-        description: !isLost ? "Les points seront attribués après restitution" : undefined,
+        description: !isLost
+          ? "Les points seront attribués après restitution"
+          : undefined,
       });
       setResult({ rec, matches });
       if (matches.length > 0) {
@@ -300,7 +326,7 @@ const DeclarePage = () => {
       setError(
         err?.message?.includes("row-level security")
           ? "Erreur de permission. Vérifiez que les tables sont créées dans Supabase."
-          : err?.message || "La déclaration n'a pas pu être enregistrée."
+          : err?.message || "La déclaration n'a pas pu être enregistrée.",
       );
     } finally {
       setSaving(false);
@@ -328,7 +354,9 @@ const DeclarePage = () => {
                 <CheckCircle2 className="h-8 w-8 text-accent" />
               </div>
               <h1 className="mt-4 text-xl font-extrabold">
-                {isPerson ? "Déclaration enregistrée" : "Déclaration enregistrée"}
+                {isPerson
+                  ? "Déclaration enregistrée"
+                  : "Déclaration enregistrée"}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 {isPerson
@@ -396,7 +424,9 @@ const DeclarePage = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
-                <p className="font-extrabold text-lg">Mise en avant prioritaire</p>
+                <p className="font-extrabold text-lg">
+                  Mise en avant prioritaire
+                </p>
                 <button
                   type="button"
                   onClick={() => setUssdPayment(null)}
@@ -439,7 +469,9 @@ const DeclarePage = () => {
             type="button"
             onClick={() => navigate("/declarer/perdu")}
             className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition-all ${
-              isLost ? "bg-card shadow-sm text-primary" : "text-muted-foreground"
+              isLost
+                ? "bg-card shadow-sm text-primary"
+                : "text-muted-foreground"
             }`}
           >
             <FileText className="h-4 w-4" />
@@ -449,7 +481,9 @@ const DeclarePage = () => {
             type="button"
             onClick={() => navigate("/declarer/retrouve")}
             className={`flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 transition-all ${
-              !isLost ? "bg-card shadow-sm text-accent" : "text-muted-foreground"
+              !isLost
+                ? "bg-card shadow-sm text-accent"
+                : "text-muted-foreground"
             }`}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -475,7 +509,9 @@ const DeclarePage = () => {
               >
                 {s}
               </button>
-              <div className={`h-0.5 flex-1 rounded-full transition-colors ${step > s ? "bg-primary" : "bg-muted"}`} />
+              <div
+                className={`h-0.5 flex-1 rounded-full transition-colors ${step > s ? "bg-primary" : "bg-muted"}`}
+              />
             </React.Fragment>
           ))}
         </div>
@@ -490,22 +526,27 @@ const DeclarePage = () => {
             <div className="mt-6 grid gap-4 animate-fade-in">
               <h2 className="text-lg font-extrabold">
                 {!form.category
-                  ? (isLost ? "Que cherchez-vous ?" : "Qu'avez-vous retrouvé ?")
+                  ? isLost
+                    ? "Que cherchez-vous ?"
+                    : "Qu'avez-vous retrouvé ?"
                   : isPerson
-                    ? (isLost ? "Qui recherchez-vous ?" : "Qui avez-vous retrouvé ?")
-                    : (isLost ? "Qu'avez-vous égaré ?" : "Qu'avez-vous retrouvé ?")
-                }
+                    ? isLost
+                      ? "Qui recherchez-vous ?"
+                      : "Qui avez-vous retrouvé ?"
+                    : isLost
+                      ? "Qu'avez-vous égaré ?"
+                      : "Qu'avez-vous retrouvé ?"}
               </h2>
               <p className={hint}>
                 {!form.category
                   ? "Sélectionnez une catégorie pour commencer."
                   : isPerson
-                    ? (isLost
-                        ? "Décrivez la personne disparue pour faciliter sa recherche."
-                        : "Décrivez la personne que vous avez retrouvée.")
-                    : (isLost
-                        ? "Sélectionnez la catégorie puis décrivez brièvement."
-                        : "Sélectionnez la catégorie et décrivez l'objet trouvé.")}
+                    ? isLost
+                      ? "Décrivez la personne disparue pour faciliter sa recherche."
+                      : "Décrivez la personne que vous avez retrouvée."
+                    : isLost
+                      ? "Sélectionnez la catégorie puis décrivez brièvement."
+                      : "Sélectionnez la catégorie et décrivez l'objet trouvé."}
               </p>
 
               {/* Catégorie */}
@@ -517,14 +558,19 @@ const DeclarePage = () => {
                   {categories.length === 0 ? (
                     <div className="grid grid-cols-2 gap-2">
                       {[0, 1, 2, 3, 4, 5].map((k) => (
-                        <div key={k} className="h-20 animate-pulse rounded-xl bg-muted" />
+                        <div
+                          key={k}
+                          className="h-20 animate-pulse rounded-xl bg-muted"
+                        />
                       ))}
                     </div>
                   ) : (
                     <CategoryGrid
                       categories={categories}
                       selected={form.category || null}
-                      onSelect={(c) => setForm((f) => ({ ...f, category: c.id }))}
+                      onSelect={(c) =>
+                        setForm((f) => ({ ...f, category: c.id }))
+                      }
                       size="md"
                     />
                   )}
@@ -535,7 +581,9 @@ const DeclarePage = () => {
               {isPerson && (
                 <div className={`${card} animate-fade-in`}>
                   <p className={sectionTitle}>
-                    {isLost ? "Identité de la personne recherchée" : "Identité de la personne retrouvée"}
+                    {isLost
+                      ? "Identité de la personne recherchée"
+                      : "Identité de la personne retrouvée"}
                   </p>
                   <div className="mt-3 space-y-3">
                     <label className={labelCls}>
@@ -594,7 +642,8 @@ const DeclarePage = () => {
                         placeholder="Ex : Taille 1m20, cheveux courts, porte un t-shirt bleu, cicatrice au front..."
                       />
                       <span className={hint}>
-                        Taille, couleur de peau, vêtements, particularités physiques
+                        Taille, couleur de peau, vêtements, particularités
+                        physiques
                       </span>
                     </label>
                   </div>
@@ -605,7 +654,9 @@ const DeclarePage = () => {
               {isDocument && !isPerson && (
                 <div className={`${card} animate-fade-in`}>
                   <p className={sectionTitle}>
-                    {isLost ? "Détails du document perdu" : "Détails du document trouvé"}
+                    {isLost
+                      ? "Détails du document perdu"
+                      : "Détails du document trouvé"}
                   </p>
                   <div className="mt-3 space-y-3">
                     <label className={labelCls}>
@@ -622,7 +673,10 @@ const DeclarePage = () => {
                     </label>
                     <label className={labelCls}>
                       <span className="text-xs text-muted-foreground">
-                        Référence du document <span className="text-muted-foreground/60">(optionnel)</span>
+                        Référence du document{" "}
+                        <span className="text-muted-foreground/60">
+                          (optionnel)
+                        </span>
                       </span>
                       <input
                         className={field}
@@ -643,12 +697,16 @@ const DeclarePage = () => {
               {!isDocument && !isPerson && form.category && (
                 <div className={`${card} animate-fade-in`}>
                   <p className={sectionTitle}>
-                    {isLost ? "Détails de l'objet perdu" : "Détails de l'objet trouvé"}
+                    {isLost
+                      ? "Détails de l'objet perdu"
+                      : "Détails de l'objet trouvé"}
                   </p>
                   <div className="mt-3 space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <label className={labelCls}>
-                        <span className="text-xs text-muted-foreground">Marque</span>
+                        <span className="text-xs text-muted-foreground">
+                          Marque
+                        </span>
                         <input
                           className={field}
                           value={form.brand}
@@ -657,7 +715,9 @@ const DeclarePage = () => {
                         />
                       </label>
                       <label className={labelCls}>
-                        <span className="text-xs text-muted-foreground">Couleur</span>
+                        <span className="text-xs text-muted-foreground">
+                          Couleur
+                        </span>
                         <input
                           className={field}
                           value={form.color}
@@ -668,7 +728,10 @@ const DeclarePage = () => {
                     </div>
                     <label className={labelCls}>
                       <span className="text-xs text-muted-foreground">
-                        Nom sur l&apos;objet <span className="text-muted-foreground/60">(optionnel)</span>
+                        Nom sur l&apos;objet{" "}
+                        <span className="text-muted-foreground/60">
+                          (optionnel)
+                        </span>
                       </span>
                       <input
                         className={field}
@@ -687,7 +750,9 @@ const DeclarePage = () => {
                   <label className={labelCls}>
                     <span className={sectionTitle}>
                       {isPerson
-                        ? (isLost ? "Circonstances de la disparition" : "Où et comment l'avez-vous retrouvé ?")
+                        ? isLost
+                          ? "Circonstances de la disparition"
+                          : "Où et comment l'avez-vous retrouvé ?"
                         : "Décrivez brièvement"}
                     </span>
                     <textarea
@@ -697,12 +762,12 @@ const DeclarePage = () => {
                       onChange={set("description")}
                       placeholder={
                         isPerson
-                          ? (isLost
-                              ? "Où la personne a-t-elle été vue pour la dernière fois ? Circonstances, direction prise..."
-                              : "Où l'avez-vous trouvé ? État, circonstances...")
-                          : (isLost
-                              ? "Comment l'avez-vous perdu ? Où exactement ? Circonstances..."
-                              : "Où l'avez-vous trouvé ? Description pour aider le propriétaire...")
+                          ? isLost
+                            ? "Où la personne a-t-elle été vue pour la dernière fois ? Circonstances, direction prise..."
+                            : "Où l'avez-vous trouvé ? État, circonstances..."
+                          : isLost
+                            ? "Comment l'avez-vous perdu ? Où exactement ? Circonstances..."
+                            : "Où l'avez-vous trouvé ? Description pour aider le propriétaire..."
                       }
                     />
                   </label>
@@ -766,7 +831,9 @@ const DeclarePage = () => {
                         className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-all active:scale-[0.98]"
                       >
                         <Camera className="h-6 w-6" />
-                        <span className="text-xs font-bold">Prendre une photo</span>
+                        <span className="text-xs font-bold">
+                          Prendre une photo
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -774,7 +841,9 @@ const DeclarePage = () => {
                         className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-4 text-sm text-muted-foreground hover:border-primary/50 hover:text-primary transition-all active:scale-[0.98]"
                       >
                         <Upload className="h-6 w-6" />
-                        <span className="text-xs font-bold">Choisir une image</span>
+                        <span className="text-xs font-bold">
+                          Choisir une image
+                        </span>
                       </button>
                     </div>
                   )}
@@ -798,12 +867,12 @@ const DeclarePage = () => {
               <h2 className="text-lg font-extrabold">Où et quand ?</h2>
               <p className={hint}>
                 {isPerson
-                  ? (isLost
-                      ? "Dernier lieu et date connus de la personne."
-                      : "Lieu et date où vous avez retrouvé la personne.")
-                  : (isLost
-                      ? "Indiquez le lieu et la date de la perte."
-                      : "Indiquez le lieu où vous avez trouvé l'objet.")}
+                  ? isLost
+                    ? "Dernier lieu et date connus de la personne."
+                    : "Lieu et date où vous avez retrouvé la personne."
+                  : isLost
+                    ? "Indiquez le lieu et la date de la perte."
+                    : "Indiquez le lieu où vous avez trouvé l'objet."}
               </p>
 
               <div className={card}>
@@ -822,7 +891,10 @@ const DeclarePage = () => {
                   </label>
                   <label className={labelCls}>
                     <span className="text-xs text-muted-foreground">
-                      Quartier / secteur <span className="text-muted-foreground/60">(optionnel)</span>
+                      Quartier / secteur{" "}
+                      <span className="text-muted-foreground/60">
+                        (optionnel)
+                      </span>
                     </span>
                     <input
                       className={field}
@@ -834,9 +906,16 @@ const DeclarePage = () => {
                   <label className={labelCls}>
                     <span className="text-xs text-muted-foreground">
                       {isPerson
-                        ? (isLost ? "Date de la disparition" : "Date de la découverte")
-                        : (isLost ? "Date de la perte" : "Date de la découverte")}
-                      <span className="text-muted-foreground/60"> (optionnel)</span>
+                        ? isLost
+                          ? "Date de la disparition"
+                          : "Date de la découverte"
+                        : isLost
+                          ? "Date de la perte"
+                          : "Date de la découverte"}
+                      <span className="text-muted-foreground/60">
+                        {" "}
+                        (optionnel)
+                      </span>
                     </span>
                     <input
                       type="date"
@@ -863,12 +942,12 @@ const DeclarePage = () => {
                   />
                   <span className={hint}>
                     {isPerson
-                      ? (isLost
-                          ? "Le retrouveur pourra vous joindre pour localiser la personne."
-                          : "La famille pourra vous contacter pour récupérer la personne.")
-                      : (isLost
-                          ? "Le retrouveur pourra vous contacter directement."
-                          : "Le propriétaire pourra vous contacter pour récupérer l'objet.")}
+                      ? isLost
+                        ? "Le retrouveur pourra vous joindre pour localiser la personne."
+                        : "La famille pourra vous contacter pour récupérer la personne."
+                      : isLost
+                        ? "Le retrouveur pourra vous contacter directement."
+                        : "Le propriétaire pourra vous contacter pour récupérer l'objet."}
                   </span>
                 </label>
               </div>
@@ -894,11 +973,15 @@ const DeclarePage = () => {
                         ? "Votre déclaration passe en tête des résultats pendant 30 jours"
                         : "En tête des résultats pendant 30 jours"}
                     </p>
-                    <p className="mt-1 text-lg font-extrabold text-primary">500 FCFA</p>
+                    <p className="mt-1 text-lg font-extrabold text-primary">
+                      500 FCFA
+                    </p>
                     {form.priority && (
                       <>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Paiement en ligne : Total avec frais (3%) : {formatNumber(computeTotalWithFee(500))} FCFA
+                          Paiement Payer En ligne avec code OTP : Total avec
+                          frais (3%) : {formatNumber(computeTotalWithFee(500))}{" "}
+                          FCFA
                         </p>
                         <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-muted/70 p-1">
                           <button
@@ -910,7 +993,7 @@ const DeclarePage = () => {
                                 : "text-muted-foreground"
                             }`}
                           >
-                            En ligne
+                            Payer En ligne avec code OTP
                           </button>
                           <button
                             type="button"
@@ -921,12 +1004,13 @@ const DeclarePage = () => {
                                 : "text-muted-foreground"
                             }`}
                           >
-                            Code USSD
+                            Payer ici
                           </button>
                         </div>
                         {payMode === "ussd" && (
                           <p className="mt-1 text-[11px] text-muted-foreground">
-                            Composez le code USSD affiché après envoi · 500 FCFA, sans frais.
+                            Composez le Payer ici affiché après envoi · 500
+                            FCFA, sans frais.
                           </p>
                         )}
                       </>
@@ -934,7 +1018,9 @@ const DeclarePage = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, priority: !f.priority }))}
+                    onClick={() =>
+                      setForm((f) => ({ ...f, priority: !f.priority }))
+                    }
                     className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
                       form.priority ? "bg-primary" : "bg-muted"
                     }`}
@@ -972,7 +1058,9 @@ const DeclarePage = () => {
                   {saving
                     ? "Envoi en cours..."
                     : isPerson
-                      ? (isLost ? "Publier l'alerte disparition" : "Déclarer la personne retrouvée")
+                      ? isLost
+                        ? "Publier l'alerte disparition"
+                        : "Déclarer la personne retrouvée"
                       : "Publier ma déclaration"}
                 </button>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { Link, useNavigate } from 'react-router-dom';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Loader2, Eye, EyeOff, LogIn } from 'lucide-react';
 import Layout from '@/components/Layout';
 import BrandLogo from '@/components/BrandLogo';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,6 +13,8 @@ const LoginPage = () => {
     const { login } = useAuth();
     const { branding } = useBranding();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const notice = searchParams.get('notice');
     const [form, setForm] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
@@ -59,6 +61,12 @@ const LoginPage = () => {
                 <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-lg">
                     <h1 className="text-2xl font-extrabold">Connexion</h1>
                     <p className="mt-1.5 text-sm text-muted-foreground">Accédez à vos correspondances et points.</p>
+                    {notice && (
+                        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
+                            <LogIn className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{notice}</span>
+                        </div>
+                    )}
                     <form onSubmit={submit} className="mt-6 space-y-4">
                         <label className="flex flex-col gap-1.5 text-sm font-bold">
                             Email
