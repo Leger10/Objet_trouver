@@ -163,6 +163,10 @@ export const runMatching = async (declaration) => {
     const { total, breakdown } = scoreMatch(lost, found);
     if (total < 25) continue;
     try {
+      const existing = await pb.collection("matches").getFullList({
+        filter: `lost = '${lost.id}' && found = '${found.id}'`,
+      });
+      if (existing.length > 0) continue;
       const rec = await pb.collection("matches").create(
         {
           lost: lost.id,

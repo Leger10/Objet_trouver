@@ -509,6 +509,7 @@ class PocketBaseCompatible {
           name: userData.name || '',
           phone: userData.phone || '',
           city: userData.city || '',
+          quarter: userData.quarter || '',
           referred_by: userData.referred_by || '',
         }
       }

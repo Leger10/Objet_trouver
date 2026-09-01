@@ -22,6 +22,10 @@ import {
   ZoomIn,
   Pencil,
   Trash2,
+  RefreshCw,
+  Loader2,
+  Handshake,
+  FileText,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -29,7 +33,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import AdSlot from "@/components/AdSlot";
 import { useAuth } from "@/contexts/AuthContext";
-import { maskId, notify, notifyAdminsOfClaim } from "@/lib/retrouve";
+import { maskId, notify, notifyAdminsOfClaim, runMatching } from "@/lib/retrouve";
 import EtiquetteDecl from "@/components/EtiquetteDecl";
 import MatchComparison from "@/components/MatchComparison";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -66,6 +70,9 @@ const DeclarationPage = () => {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rematching, setRematching] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimedId, setClaimedId] = useState(null);
 
   useEffect(() => {
     pb.collection("declarations")
@@ -83,28 +90,7 @@ const DeclarationPage = () => {
           } catch (_) {}
         }
         try {
-          const [lostMatches, foundMatches] = await Promise.all([
-            pb.collection("matches").getFullList({
-              sort: "-score",
-              expand: "lost,found",
-              filter: pb.filter('lost = {:id}', { id: decl.id }),
-              requestKey: `decl-m-lost-${decl.id}`,
-            }).catch(() => []),
-            pb.collection("matches").getFullList({
-              sort: "-score",
-              expand: "lost,found",
-              filter: pb.filter('found = {:id}', { id: decl.id }),
-              requestKey: `decl-m-found-${decl.id}`,
-            }).catch(() => []),
-          ]);
-          const seen = new Set();
-          const all = [...lostMatches, ...foundMatches].filter((m) => {
-            if (seen.has(m.id)) return false;
-            seen.add(m.id);
-            return true;
-          });
-          all.sort((a, b) => (b.score || 0) - (a.score || 0));
-          setMatches(all);
+          await loadMatches(decl.id);
         } catch (_) {}
       })
       .catch(() => setError("Déclaration introuvable ou retirée."))
@@ -142,6 +128,59 @@ const DeclarationPage = () => {
     }
   };
 
+  const loadMatches = async (declId) => {
+    const targetId = declId || item?.id;
+    if (!targetId) return;
+    try {
+      const [lostMatches, foundMatches] = await Promise.all([
+        pb.collection("matches").getFullList({
+          sort: "-score",
+          expand: "lost,found",
+          filter: pb.filter('lost = {:id}', { id: targetId }),
+          requestKey: `decl-m-lost-${targetId}`,
+        }).catch(() => []),
+        pb.collection("matches").getFullList({
+          sort: "-score",
+          expand: "lost,found",
+          filter: pb.filter('found = {:id}', { id: targetId }),
+          requestKey: `decl-m-found-${targetId}`,
+        }).catch(() => []),
+      ]);
+      const seen = new Set();
+      const all = [...lostMatches, ...foundMatches].filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      });
+      all.sort((a, b) => (b.score || 0) - (a.score || 0));
+      setMatches(all);
+    } catch (_) {}
+  };
+
+  const handleRematch = async () => {
+    if (!item || rematching) return;
+    setRematching(true);
+    setError("");
+    try {
+      const created = await runMatching(item);
+      if (created.length) {
+        toast.success(`${created.length} correspondance${created.length > 1 ? "s" : ""} trouvée${created.length > 1 ? "s" : ""} !`);
+        await loadMatches();
+      } else {
+        const still = matches.length;
+        toast.info(
+          still > 0
+            ? "Aucune nouvelle correspondance. Vos correspondances existantes sont affichées."
+            : "Aucune correspondance trouvée pour le moment."
+        );
+      }
+    } catch (err) {
+      setError(err?.message || "La recherche de correspondance a échoué.");
+    } finally {
+      setRematching(false);
+    }
+  };
+
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -152,6 +191,42 @@ const DeclarationPage = () => {
       setError(err?.message || "Suppression impossible.");
       setDeleting(false);
       setShowDeleteModal(false);
+    }
+  };
+
+  // Demande de restitution émise par la personne qui avait déclaré la perte,
+  // quand une correspondance (objjet retrouvé) existe.
+  const claimFromMatch = async () => {
+    if (!user || claiming || sent) return;
+    if (!claimTarget) return;
+    setClaiming(true);
+    setError("");
+    try {
+      const existing = await pb.collection("claims").getFullList({
+        filter: pb.filter("claimant = {:u} && declaration = {:d}", { u: user.id, d: claimTarget.id }),
+        requestKey: `decl-claim-${claimTarget.id}`,
+      });
+      if (existing.length > 0) {
+        setClaimedId(existing[0].declaration);
+        setSent(true);
+        toast.info("Vous avez déjà demandé la restitution de cet objet.");
+        return;
+      }
+      await pb.collection("claims").create({
+        declaration: claimTarget.id,
+        claimant: user.id,
+        match_id: bestMatch.id,
+        security_answer: `Restitution demandée via correspondance automatique (score ${bestMatch.score || 0}%).`,
+        status: "pending",
+      });
+      await notifyAdminsOfClaim(claimTarget, user?.city || "");
+      setClaimedId(claimTarget.id);
+      setSent(true);
+      toast.success("Demande de restitution envoyée !");
+    } catch (err) {
+      setError(err?.message || "La demande n'a pas pu être envoyée.");
+    } finally {
+      setClaiming(false);
     }
   };
 
@@ -204,6 +279,10 @@ const DeclarationPage = () => {
   const isLost = item.kind === "lost";
   const hasPriority =
     item.priority && item.priority_until && new Date(item.priority_until).getTime() > Date.now();
+
+  const bestMatch =
+    matches.find((m) => m.expand?.found && m.expand?.found.status !== "returned") || null;
+  const claimTarget = bestMatch?.expand?.found || null;
 
   const catSlug = item.expand?.category?.slug || "";
   const isDocumentCategory = DOCUMENT_SLUGS.has(catSlug);
@@ -645,47 +724,122 @@ const DeclarationPage = () => {
           </motion.div>
 
           {/* ── Matches ── */}
-          {matches.length > 0 && (
-            <motion.div {...fadeIn} className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="grid h-8 w-8 place-items-center rounded-xl bg-amber-500/15">
-                  <Sparkles className="h-4 w-4 text-amber-400" />
-                </div>
-                <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">
-                  Correspondances ({matches.length})
-                </h2>
+          <motion.div {...fadeIn} className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="grid h-8 w-8 place-items-center rounded-xl bg-amber-500/15">
+                <Sparkles className="h-4 w-4 text-amber-400" />
               </div>
-              {matches.map((m) => {
-                const lostDecl = m.expand?.lost;
-                const foundDecl = m.expand?.found;
-                return (
-                  <MatchComparison
-                    key={m.id}
-                    match={m}
-                    lostDecl={lostDecl}
-                    foundDecl={foundDecl}
-                  />
-                );
-              })}
-            </motion.div>
-          )}
+              <h2 className="text-sm font-extrabold text-white uppercase tracking-wider">
+                Correspondances{matches.length > 0 ? ` (${matches.length})` : ""}
+              </h2>
+            </div>
 
-          {matches.length === 0 && !loading && (
-            <motion.div
-              {...fadeIn}
-              className="rounded-3xl border border-dashed border-white/10 bg-white/5 p-6 text-center"
-            >
-              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white/5">
-                <CircleDot className="h-6 w-6 text-white/20" />
+            {matches.map((m) => {
+              const lostDecl = m.expand?.lost;
+              const foundDecl = m.expand?.found;
+              return (
+                <MatchComparison
+                  key={m.id}
+                  match={m}
+                  lostDecl={lostDecl}
+                  foundDecl={foundDecl}
+                />
+              );
+            })}
+
+            {isLost && isOwner && matches.length > 0 && item.status !== "returned" && claimTarget && (
+              <motion.div
+                {...fadeIn}
+                className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4"
+              >
+                {sent ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 rounded-2xl bg-emerald-500/15 p-3">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+                      <div>
+                        <p className="text-sm font-bold text-emerald-300">Demande de restitution envoyée !</p>
+                        <p className="text-xs text-emerald-400/60">Remplissez le PV de restitution puis indiquez au déposant de se rendre chez l&apos;administrateur.</p>
+                      </div>
+                    </div>
+                    <Link
+                      to={`/pv-restitution?claim=${encodeURIComponent(claimTarget.id)}&match=${encodeURIComponent(bestMatch.id)}`}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/15 px-4 py-3 text-sm font-extrabold text-emerald-200 hover:bg-emerald-500/25 active:scale-[0.98] transition-all"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Remplir le PV de restitution
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-500/15">
+                        <Handshake className="h-4 w-4 text-emerald-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-extrabold text-white">Votre objet a été retrouvé !</p>
+                        <p className="text-[11px] text-emerald-400/60">Demandez sa restitution officiellement</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-white/45 leading-relaxed mb-3">
+                      Une correspondance à {bestMatch.score || 0}% a été trouvée
+                      {claimTarget.title ? ` avec « ${claimTarget.title} »` : ""}. Les administrateurs
+                      valideront votre identité puis organiseront la remise.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={claimFromMatch}
+                      disabled={claiming}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-4 py-3 text-sm font-extrabold text-white shadow-lg shadow-emerald-500/25 active:scale-[0.98] transition-transform disabled:opacity-50"
+                    >
+                      {claiming ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Envoi…</>
+                      ) : (
+                        <><CheckCircle2 className="h-4 w-4" /> Demander la restitution</>
+                      )}
+                    </button>
+                    {error && (
+                      <p className="mt-2 rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-400">
+                        {error}
+                      </p>
+                    )}
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {matches.length === 0 && !loading && (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-center">
+                <CircleDot className="mx-auto h-6 w-6 text-white/20" />
+                <p className="mt-2 text-sm text-white/40">
+                  Aucune correspondance pour le moment.
+                </p>
+                <p className="mt-1 text-xs text-white/25">
+                  L&apos;algorithme compare automatiquement cette déclaration aux autres.
+                </p>
               </div>
-              <p className="mt-3 text-sm text-white/40">
-                Aucune correspondance pour le moment.
-              </p>
-              <p className="mt-1 text-xs text-white/25">
-                L&apos;algorithme continue de comparer en arrière-plan.
-              </p>
-            </motion.div>
-          )}
+            )}
+
+            {isAuthed && (
+              <motion.button
+                type="button"
+                onClick={handleRematch}
+                disabled={rematching}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3.5 text-sm font-bold text-amber-300 disabled:opacity-50 hover:bg-amber-500/20 active:scale-[0.98] transition-all"
+              >
+                {rematching ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Recherche en cours…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Rechercher une correspondance
+                  </>
+                )}
+              </motion.button>
+            )}
+          </motion.div>
 
           {/* ── Report ── */}
           {isAuthed && !isOwner && (

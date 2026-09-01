@@ -21,7 +21,7 @@ const SignupPage = () => {
     const { branding } = useBranding();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [form, setForm] = useState({ name: '', email: '', phone: '', city: '', password: '', referred_by: '' });
+    const [form, setForm] = useState({ name: '', email: '', phone: '', city: '', quarter: '', password: '', referred_by: '' });
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
     const [confirmationSent, setConfirmationSent] = useState(false);
@@ -47,6 +47,7 @@ const SignupPage = () => {
                 name: form.name,
                 phone: form.phone,
                 city: form.city,
+                quarter: form.quarter,
                 referred_by: form.referred_by.trim().toUpperCase(),
             });
             if (result?.needsConfirmation) {
@@ -123,6 +124,10 @@ const SignupPage = () => {
                                 <label className="flex flex-col gap-2 text-sm font-bold">
                                     Téléphone
                                     <input className={field} value={form.phone} onChange={set('phone')} placeholder="+226 ..." inputMode="tel" autoComplete="tel" />
+                                </label>
+                                <label className="flex flex-col gap-2 text-sm font-bold">
+                                    Quartier / Secteur
+                                    <input className={field} value={form.quarter} onChange={set('quarter')} placeholder="Ex : Karpala, Dassasgho, Secteur 18…" autoComplete="address-level1" />
                                 </label>
                                 <label className="flex flex-col gap-2 text-sm font-bold">
                                     Ville
