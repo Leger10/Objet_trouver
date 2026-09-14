@@ -7,7 +7,7 @@ import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePaginate, ListFooter, EmptyState } from "@/components/PaginatedList";
 import {
-  printPV,
+  downloadPV,
   TYPE_LABELS,
   TYPE_BADGE,
   formatDateTimeFr,
@@ -24,7 +24,6 @@ import {
   Loader2,
   FileText,
   FileCheck2,
-  Printer,
   Download,
   Palette,
   Megaphone,
@@ -1697,11 +1696,8 @@ function TabPV({ pvs }) {
                 {pv.object_category || "—"} · {pv.expand?.generated_by?.name || "—"}
               </div>
               <div className="mt-2 flex gap-1.5">
-                <button onClick={() => printPV(pv)} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold">
-                  <Printer className="h-3 w-3" /> Imprimer
-                </button>
-                <button onClick={() => printPV(pv)} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold">
-                  <Download className="h-3 w-3" /> PDF
+                <button onClick={() => downloadPV(pv)} className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold">
+                  <Download className="h-3 w-3" /> Télécharger le PDF
                 </button>
               </div>
             </div>

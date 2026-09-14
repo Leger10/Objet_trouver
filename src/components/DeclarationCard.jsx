@@ -1,13 +1,18 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { CalendarDays, MapPin, Star, ChevronRight } from "lucide-react";
+import { CalendarDays, MapPin, Star, ChevronRight, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { pb } from "@/lib/supabaseClient";
 import { maskId } from "@/lib/retrouve";
-import { metaForSlug } from "@/lib/categories";
+import { metaForSlug, isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
+import { useAuth } from "@/contexts/AuthContext";
 
 const DeclarationCard = ({ item, index = 0 }) => {
+  const { user, isAdmin } = useAuth();
   const cat = item.expand?.category;
+  const sensitive = isSensitiveCategory(item);
+  const canView = canViewSensitiveDetails(item, user, isAdmin);
+  const masked = sensitive && !canView;
   const photo = item.photo
     ? pb.files.getURL(item, item.photo, { thumb: "400x300" })
     : item.photo_url || null;
@@ -33,15 +38,15 @@ const DeclarationCard = ({ item, index = 0 }) => {
 
         {/* Photo / Emoji */}
         <div className="relative grid h-[4.5rem] w-[4.5rem] shrink-0 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-muted/80 to-muted/40">
-          {photo ? (
+          {photo && !masked ? (
             <img
               src={photo}
-              alt={item.title}
+              alt={masked ? "Objet protégé" : item.title}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
             <span className="text-3xl">
-              {cat ? metaForSlug(cat.slug).emoji : "📦"}
+              {masked ? <Lock className="mx-auto h-6 w-6 text-foreground/40" /> : cat ? metaForSlug(cat.slug).emoji : "📦"}
             </span>
           )}
           {/* Kind badge overlay */}
@@ -80,11 +85,11 @@ const DeclarationCard = ({ item, index = 0 }) => {
 
           {/* Title */}
           <p className="mt-1.5 truncate font-extrabold text-[15px] leading-tight group-hover:text-primary transition-colors">
-            {item.title}
+            {masked ? (cat?.name || "Document protégé") : item.title}
           </p>
 
           {/* Description excerpt */}
-          {item.description && (
+          {!masked && item.description && (
             <p className="mt-1 line-clamp-1 text-xs text-muted-foreground/80">
               {item.description}
             </p>
@@ -108,7 +113,7 @@ const DeclarationCard = ({ item, index = 0 }) => {
                 })}
               </span>
             )}
-            {item.doc_last4 && (
+            {!masked && item.doc_last4 && (
               <span className="font-mono text-[10px] text-muted-foreground/60">
                 {maskId(item.doc_last4)}
               </span>

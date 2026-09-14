@@ -129,8 +129,8 @@ export const findNearestAdmin = async (city = "", quarter = "") => {
   try {
     // Use SQL function via RPC — bypasses RLS (SECURITY DEFINER)
     const { data, error } = await supabase.rpc("find_nearest_admin", {
-      p_city: city || "",
-      p_quarter: quarter || "",
+      p_city: (city || "").trim(),
+      p_quarter: (quarter || "").trim(),
     });
     if (error || !data?.length) return null;
     const row = data[0];
@@ -165,59 +165,54 @@ export const onDeclarationCreated = async (declaration, user) => {
 export const onMatchFound = async (match, lostDecl, foundDecl) => {
   const score = match.score;
 
-  // Look up deposit PV info for the found declaration
-  const pvInfo = await getDepositPVInfo(foundDecl.id);
-  const adminLabel = pvInfo?.adminName ? `Administrateur : ${pvInfo.adminName}` : "";
-  const locationLabel = pvInfo?.location ? `Lieu de retrait : ${pvInfo.location}` : "";
-  const pvLabel = pvInfo?.pvNumber ? `PV n°${pvInfo.pvNumber}` : "";
-
-  const pickupDetails = [adminLabel, locationLabel].filter(Boolean).join("\n");
-
-  // Find the nearest admin based on the found declaration's city/quarter
+  // 1. Trouver l'admin le plus proche du PERDANT (c'est chez lui que l'objet sera déposé)
   const nearestAdmin = await findNearestAdmin(
-    foundDecl.city || lostDecl.city || "",
-    foundDecl.zone || lostDecl.zone || ""
+    lostDecl.city || "",
+    lostDecl.zone || ""
   );
 
-  const depositInfo = nearestAdmin
-    ? nearestAdmin.matchLevel === "exact"
-      ? `Admin proche : ${nearestAdmin.name} (même quartier : ${nearestAdmin.quarter})`
-      : nearestAdmin.matchLevel === "city"
-        ? `Admin dans votre ville : ${nearestAdmin.name} (${nearestAdmin.city})`
-        : `Admin RetrouveMoi : ${nearestAdmin.name}`
-    : "";
+  // Label admin pour les notifications
+  const adminName = nearestAdmin?.name || "";
+  const adminCity = nearestAdmin?.city || "";
+  const adminQuarter = nearestAdmin?.quarter || "";
+  const adminLocation = [adminCity, adminQuarter].filter(Boolean).join(" · ");
+  const adminSentence = adminName
+    ? `Admin ${adminName}${adminLocation ? ` (${adminLocation})` : ""}`
+    : "l'admin le plus proche";
 
-  // 1. Notifier le propriétaire de la déclaration "perdue"
+  // ─── 1. PUSH AU DÉCLARANT RETROUVÉ (celui qui a trouvé l'objet) ───
+  // → "Déposez l'objet chez [Admin] (quartier) — le plus proche du propriétaire"
   await createNotification(
-    lostDecl.owner,
-    `Objet retrouvé ! (${score}%)`,
-    `Un objet "${foundDecl.title}" correspond à votre déclaration "${lostDecl.title}".${pickupDetails ? `\n\n${pickupDetails}` : ""}\n\nPrésentez-vous avec une pièce d'identité pour récupérer votre objet.`,
-    `/objet/${lostDecl.id}`
-  );
-  // Push + email au propriétaire perdu
-  sendPushAndEmail(
-    lostDecl.owner,
-    `Objet retrouvé ! (${score}%)`,
-    `Un objet "${foundDecl.title}" correspond à votre déclaration "${lostDecl.title}".${pickupDetails ? ` ${pickupDetails}` : ""}`,
-    `/objet/${lostDecl.id}`
-  ).catch(() => {});
-
-  // 2. Notifier le DÉCLARANT de l'objet retrouvé (celui qui l'a trouvé)
-  await createNotification(
-    foundDecl.owner,
-    `Votre objet "${foundDecl.title}" correspond à une déclaration de perte (${score}%)`,
-    `Une personne a déclaré la perte de "${lostDecl.title}".${depositInfo ? `\n\n${depositInfo}` : ""}\n\nVeuillez déposer l'objet chez l'administrateur le plus proche pour que le propriétaire puisse le récupérer. Une pièce d'identité sera demandée.`,
-    `/objet/${foundDecl.id}`
-  );
-  // Push + email au déclarant retrouvé
-  sendPushAndEmail(
     foundDecl.owner,
     `Correspondance trouvée (${score}%)`,
-    `Votre objet "${foundDecl.title}" correspond à une déclaration de perte.`,
+    `Un objet "${foundDecl.title}" que vous avez trouvé correspond à une déclaration de perte.\n\nDéposez l'objet chez ${adminName || "l'admin le plus proche"}${adminLocation ? ` (${adminLocation})` : ""} pour que le propriétaire puisse le récupérer. Une pièce d'identité sera demandée.`,
+    `/objet/${foundDecl.id}`
+  );
+  sendPush(
+    foundDecl.owner,
+    `Déposez "${foundDecl.title}" chez ${adminName || "l'admin"}`,
+    `Correspondance ${score}%. Déposez l'objet chez ${adminSentence} pour que le propriétaire le récupère.`,
     `/objet/${foundDecl.id}`
   ).catch(() => {});
 
-  // 3. Notifier l'admin le plus proche
+  // ─── 2. PUSH AU PROPRIÉTAIRE PERDU (celui qui a perdu l'objet) ───
+  // → "Rendez-vous chez [Admin] (quartier) pour récupérer votre objet"
+  // claim = foundDecl.id (la page RestitutionPVPage charge la déclaration retrouvée via ce param)
+  const restitutionLink = `/pv-restitution?claim=${foundDecl.id}&match=${match.id}`;
+  await createNotification(
+    lostDecl.owner,
+    `Objet retrouvé ! (${score}%)`,
+    `Votre objet "${lostDecl.title}" correspond à une déclaration de retrouvaille.\n\nRendez-vous chez ${adminName || "l'admin le plus proche"}${adminLocation ? ` (${adminLocation})` : ""} avec une pièce d'identité pour récupérer votre objet.`,
+    restitutionLink
+  );
+  sendPush(
+    lostDecl.owner,
+    `Votre "${lostDecl.title}" a été retrouvé !`,
+    `Rendez-vous chez ${adminSentence} avec une pièce d'identité pour récupérer votre objet.`,
+    restitutionLink
+  ).catch(() => {});
+
+  // ─── 3. NOTIFICATION IN-APP À L'ADMIN ───
   try {
     if (nearestAdmin) {
       const levelLabel = nearestAdmin.matchLevel === "exact"
@@ -229,7 +224,7 @@ export const onMatchFound = async (match, lostDecl, foundDecl) => {
       await createNotification(
         nearestAdmin.id,
         "Nouvelle correspondance — Dépôt à traiter",
-        `Correspondance de ${score}% entre "${lostDecl.title}" (perdu) et "${foundDecl.title}" (retrouvé).${pvInfo?.pvNumber ? ` PV n°${pvInfo.pvNumber}.` : ""}\n\nUn déposant${levelLabel ? ` ${levelLabel}` : ""} va se présenter avec l'objet. Un PV de dépôt doit être établi.`,
+        `Correspondance de ${score}% entre "${lostDecl.title}" (perdu) et "${foundDecl.title}" (retrouvé).\n\nUn déposant${levelLabel ? ` ${levelLabel}` : ""} va se présenter avec l'objet. Un PV de dépôt doit être établi.`,
         `/admin`
       );
     }

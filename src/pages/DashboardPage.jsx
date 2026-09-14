@@ -34,9 +34,10 @@ import Layout from "@/components/Layout";
 import PullToRefresh from "@/components/PullToRefresh";
 import AdSlot from "@/components/AdSlot";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
 import { REWARDS, BADGES, getBadge, notify } from "@/lib/retrouve";
 import { groupCategories, metaForSlug, groupStyle } from "@/lib/categories";
-import { printPV, TYPE_LABELS, TYPE_BADGE, formatDateTimeFr } from "@/lib/pv";
+import { downloadPV, TYPE_LABELS, TYPE_BADGE, formatDateTimeFr } from "@/lib/pv";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";
 import EtiquetteDecl from "@/components/EtiquetteDecl";
 import InstallPopup from "@/components/InstallPopup";
@@ -122,7 +123,7 @@ const QuickAction = ({ to, icon: Icon, label, sub, accent }) => (
 );
 
 const DashboardPage = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [declarations, setDeclarations] = useState([]);
   const [matches, setMatches] = useState([]);
   const [claimsIn, setClaimsIn] = useState([]);
@@ -511,6 +512,11 @@ const DashboardPage = () => {
               <div className="space-y-2">
                 {matchesPaginate.shown.map((m) => {
                   const bd = m.breakdown || {};
+                  const myLost = m.expand?.lost?.owner === user?.id;
+                  const maskedLost = isSensitiveCategory(m.expand?.lost) && !canViewSensitiveDetails(m.expand?.lost, user, isAdmin);
+                  const maskedFound = isSensitiveCategory(m.expand?.found) && !canViewSensitiveDetails(m.expand?.found, user, isAdmin);
+                  const lostTitle = maskedLost ? (m.expand?.lost?.expand?.category?.name || "Document protégé") : m.expand?.lost?.title;
+                  const foundTitle = maskedFound ? (m.expand?.found?.expand?.category?.name || "Document protégé") : m.expand?.found?.title;
                   const scoreColor =
                     m.score >= 80
                       ? "text-emerald-500 bg-emerald-500/10"
@@ -532,7 +538,7 @@ const DashboardPage = () => {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-bold">
-                            {m.expand?.lost?.title} ↔ {m.expand?.found?.title}
+                            {lostTitle} ↔ {foundTitle}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             {bd.ville > 0 && (
@@ -771,10 +777,10 @@ const DashboardPage = () => {
                       {formatDateTimeFr(p.created)}
                     </p>
                     <button
-                      onClick={() => printPV(p)}
+                      onClick={() => downloadPV(p)}
                       className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-bold"
                     >
-                      <Download className="h-3 w-3" /> Imprimer
+                      <Download className="h-3 w-3" /> Télécharger le PDF
                     </button>
                   </div>
                 ))}

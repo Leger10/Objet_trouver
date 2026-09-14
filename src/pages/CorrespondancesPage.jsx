@@ -7,6 +7,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
 import {
   Handshake,
   Search,
@@ -39,7 +40,7 @@ const MATCH_STATUS = {
 };
 
 const CorrespondancesPage = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { branding } = useBranding();
   const [declarations, setDeclarations] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -270,6 +271,10 @@ const CorrespondancesPage = () => {
                           const found = m.expand?.found;
                           const isMyLost = m.expand?.lost?.owner === user.id;
                           const matchedDecl = isMyLost ? found : m.expand?.lost;
+                          const matchedTitle =
+                            isSensitiveCategory(matchedDecl) && !canViewSensitiveDetails(matchedDecl, user, isAdmin)
+                              ? (matchedDecl?.expand?.category?.name || "Document protégé")
+                              : (matchedDecl?.title || "Inconnu");
                           const ms = MATCH_STATUS[m.status] || MATCH_STATUS.suggested;
                           const MsIcon = ms.icon;
                           const bd = m.breakdown || {};
@@ -299,7 +304,7 @@ const CorrespondancesPage = () => {
                                     </span>
                                   </div>
                                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                    Objet : {matchedDecl?.title || "Inconnu"}
+                                    Objet : {matchedTitle}
                                   </p>
                                 </div>
                               </div>

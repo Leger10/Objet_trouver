@@ -110,6 +110,24 @@ export const groupCategories = (categories) => {
   })).filter((g) => g.items.length > 0);
 };
 
+// Catégories sensibles : détails + photo jointes réservés au déclarant et aux admins.
+export const SENSITIVE_SLUGS = new Set([
+  "cni",
+  "passeport",
+  "permis",
+  "carte-grise",
+  "plaque",
+  "documents",
+]);
+
+// Une déclaration appartient-elle à une catégorie sensible ?
+export const isSensitiveCategory = (item) =>
+  SENSITIVE_SLUGS.has(item?.expand?.category?.slug || "");
+
+// L'utilisateur (déclarant ou admin) peut-il voir les détails d'une catégorie sensible ?
+export const canViewSensitiveDetails = (item, user, isAdmin) =>
+  isAdmin || Boolean(user && item && user.id === item.owner);
+
 // Compte les déclarations par catégorie : { [categoryId]: { lost, found, total } }
 export const fetchCategoryCounts = async () => {
   const counts = {};

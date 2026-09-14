@@ -37,8 +37,7 @@ import { maskId, notify, notifyAdminsOfClaim, runMatching } from "@/lib/retrouve
 import EtiquetteDecl from "@/components/EtiquetteDecl";
 import MatchComparison from "@/components/MatchComparison";
 import { useBranding } from "@/contexts/BrandingContext";
-
-const DOCUMENT_SLUGS = new Set(["cni", "passeport", "permis", "carte-grise"]);
+import { isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
 
 const field =
   "w-full rounded-2xl border border-white/20 bg-white/10 backdrop-blur-md px-4 py-3.5 text-sm text-white placeholder-white/40 outline-none focus:border-white/40 focus:ring-2 focus:ring-white/20";
@@ -66,7 +65,6 @@ const DeclarationPage = () => {
   const [sent, setSent] = useState(false);
   const [reported, setReported] = useState(false);
   const [revealedFields, setRevealedFields] = useState(new Set());
-  const [photoRevealed, setPhotoRevealed] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -285,10 +283,13 @@ const DeclarationPage = () => {
   const claimTarget = bestMatch?.expand?.found || null;
 
   const catSlug = item.expand?.category?.slug || "";
-  const isDocumentCategory = DOCUMENT_SLUGS.has(catSlug);
+  const isDocumentCategory = isSensitiveCategory(item);
   const isDocumentPhoto = item.is_document_photo === true;
-  const canViewDoc = isOwner || isAdmin;
-  const photoBlurred = (isDocumentCategory && !canViewDoc) || (isDocumentPhoto && !canViewDoc && !photoRevealed);
+  const canViewDoc = canViewSensitiveDetails(item, user, isAdmin);
+  const photoBlurred = (isDocumentCategory || isDocumentPhoto) && !canViewDoc;
+  const maskedTitle = isDocumentCategory && !canViewDoc
+    ? (item.expand?.category?.name || "Document protégé")
+    : item.title;
 
   const toggleReveal = (key) => {
     setRevealedFields((prev) => {
@@ -326,7 +327,7 @@ const DeclarationPage = () => {
   return (
     <Layout>
       <Helmet>
-        <title>{`${item.title} — ${branding?.app_name || "RetrouveMoi"}`}</title>
+        <title>{`${maskedTitle} — ${branding?.app_name || "RetrouveMoi"}`}</title>
         <meta
           name="description"
           content={`Déclaration ${isLost ? "de perte" : "de découverte"} à ${item.city} sur ${branding?.app_name || "RetrouveMoi"}.`}
@@ -410,7 +411,7 @@ const DeclarationPage = () => {
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               src={photo}
-              alt={item.title}
+              alt={maskedTitle}
               className="max-h-[90vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
@@ -430,7 +431,7 @@ const DeclarationPage = () => {
         {photo ? (
           <img
             src={photo}
-            alt={item.title}
+            alt={maskedTitle}
             className={`absolute inset-0 h-full w-full object-cover transition-all duration-500 ${
               photoBlurred ? "blur-xl scale-105" : ""
             }`}
@@ -537,7 +538,7 @@ const DeclarationPage = () => {
               </span>
             </div>
             <h1 className="text-2xl font-extrabold text-white leading-tight tracking-tight">
-              {item.title}
+              {maskedTitle}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/70">
               <span className="flex items-center gap-1">
@@ -576,7 +577,7 @@ const DeclarationPage = () => {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-blue-300">
-                      {isDocumentCategory ? "Document officiel" : "Document scanné"}
+                      {isDocumentCategory && catSlug === "plaque" ? "Information protégée" : isDocumentCategory ? "Document officiel" : "Document scanné"}
                     </p>
                     <p className="mt-1 text-xs text-blue-400/70 leading-relaxed">
                       {isDocumentCategory
@@ -743,6 +744,8 @@ const DeclarationPage = () => {
                   match={m}
                   lostDecl={lostDecl}
                   foundDecl={foundDecl}
+                  maskLost={!canViewSensitiveDetails(lostDecl, user, isAdmin)}
+                  maskFound={!canViewSensitiveDetails(foundDecl, user, isAdmin)}
                 />
               );
             })}
@@ -782,7 +785,11 @@ const DeclarationPage = () => {
                     </div>
                     <p className="text-xs text-white/45 leading-relaxed mb-3">
                       Une correspondance à {bestMatch.score || 0}% a été trouvée
-                      {claimTarget.title ? ` avec « ${claimTarget.title} »` : ""}. Les administrateurs
+                      {claimTarget && !canViewSensitiveDetails(claimTarget, user, isAdmin) && isSensitiveCategory(claimTarget)
+                        ? " avec un objet protégé"
+                        : claimTarget?.title
+                        ? ` avec « ${claimTarget.title} »`
+                        : ""}. Les administrateurs
                       valideront votre identité puis organiseront la remise.
                     </p>
                     <button

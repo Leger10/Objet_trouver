@@ -119,13 +119,13 @@ export const MatchBreakdownBar = ({ criterion, value, max, delay = 0 }) => {
   );
 };
 
-export const MatchComparison = ({ match, lostDecl, foundDecl }) => {
+export const MatchComparison = ({ match, lostDecl, foundDecl, maskLost = false, maskFound = false }) => {
   const breakdown = match.breakdown || {};
   const score = match.score || 0;
   const criteria = CRITERIA_FR;
 
-  const lostLabel = lostDecl?.title || "Déclaration perdue";
-  const foundLabel = foundDecl?.title || "Déclaration retrouvée";
+  const lostLabel = maskLost ? "Déclaration protégée" : (lostDecl?.title || "Déclaration perdue");
+  const foundLabel = maskFound ? "Déclaration protégée" : (foundDecl?.title || "Déclaration retrouvée");
 
   return (
     <motion.div

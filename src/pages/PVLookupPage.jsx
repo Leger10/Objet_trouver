@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { useParams, Link } from "react-router-dom";
 import {
   FileText,
-  Printer,
+  Download,
   ArrowLeft,
   Calendar,
   MapPin,
@@ -19,7 +19,7 @@ import { pb } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
-  printPV,
+  downloadPV,
   TYPE_LABELS,
   TYPE_BADGE,
   formatDateTimeFr,
@@ -221,10 +221,10 @@ const PVDetail = ({ pv, branding }) => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => printPV(pv)}
+            onClick={() => downloadPV(pv)}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground active:scale-[0.98]"
           >
-            <Printer className="h-4 w-4" /> Imprimer / PDF
+            <Download className="h-4 w-4" /> Télécharger le PDF
           </button>
         </div>
       </div>

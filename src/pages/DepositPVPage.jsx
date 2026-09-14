@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
   FileText,
-  Printer,
   Download,
   Eye,
   ShieldAlert,
@@ -19,7 +18,7 @@ import { LOGO_URL } from "@/lib/brandingDefaults";
 import { metaForSlug } from "@/lib/categories";
 import {
   savePV,
-  printPV,
+  downloadPV,
   generatePVNumber,
   formatDateFr,
   formatDateTimeFr,
@@ -76,6 +75,47 @@ const DepositPVPage = () => {
       .then((list) => setCategories(list))
       .catch(() => {});
   }, [isAdmin]);
+
+  // Préremplir le lieu du dépôt avec le lieu de l'admin connecté
+  useEffect(() => {
+    const ownLocation = [user?.quarter, user?.city].filter(Boolean).join(", ") || "";
+    setForm((p) => ({ ...p, location: ownLocation || p.location }));
+  }, []);
+
+  // Préremplir le formulaire à partir de la déclaration sélectionnée
+  const onSelectDecl = async (id) => {
+    setSelectedDecl(id);
+    if (!id) return;
+    try {
+      const decl = await pb.collection("declarations").getOne(id).catch(() => null);
+      if (!decl) return;
+      const owner = decl.owner
+        ? await pb.collection("users").getOne(decl.owner).catch(() => null)
+        : null;
+      const ownerName = owner?.name || decl.person_name || "";
+      const nameParts = ownerName.split(" ").filter(Boolean);
+      const catName =
+        categories.find((c) => c.slug === decl.category)?.name ||
+        decl.category ||
+        "";
+      setForm((p) => ({
+        ...p,
+        signatoryName: nameParts.slice(-1)[0] || p.signatoryName,
+        signatoryFirstName: nameParts.slice(0, -1).join(" ") || p.signatoryFirstName,
+        signatoryPhone: owner?.phone || decl.phone || p.signatoryPhone,
+        objectCategory: catName || p.objectCategory,
+        objectDescription:
+          [decl.brand, decl.color, decl.description].filter(Boolean).join(" · ") ||
+          decl.title ||
+          p.objectDescription,
+        objectFoundLocation:
+          [decl.zone, decl.city].filter(Boolean).join(", ") || p.objectFoundLocation,
+        objectFoundDate: decl.event_date
+          ? new Date(decl.event_date).toISOString().slice(0, 10)
+          : "",
+      }));
+    } catch (_) {}
+  };
 
   const previewPV = useMemo(
     () => ({
@@ -151,7 +191,7 @@ const DepositPVPage = () => {
       });
       const full = { ...rec, data: form };
       setLastPV(full);
-      printPV(full);
+      downloadPV(full);
 
       if (selectedDecl) {
         try {
@@ -274,12 +314,12 @@ const DepositPVPage = () => {
                 Déclaration associée
               </p>
               <p className="text-xs text-muted-foreground mb-2">
-                Sélectionnez une déclaration existante (optionnel).
+                Sélectionnez une déclaration existante : le formulaire sera pré-rempli automatiquement. Vous ne complétez que ce qui manque.
               </p>
               <SearchableSelect
                 placeholder="Rechercher une déclaration…"
                 value={selectedDecl}
-                onChange={setSelectedDecl}
+                onChange={onSelectDecl}
                 items={declarations.map((d) => ({
                   value: d.id,
                   label: d.title,
@@ -379,10 +419,10 @@ const DepositPVPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => printPV(previewPV)}
+                onClick={() => downloadPV(previewPV)}
                 className="flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold active:scale-[0.98]"
               >
-                <Printer className="h-4 w-4" /> Imprimer l'aperçu
+                <Download className="h-4 w-4" /> Télécharger le PDF
               </button>
               <button
                 type="button"
@@ -402,10 +442,10 @@ const DepositPVPage = () => {
                 </p>
                 <button
                   type="button"
-                  onClick={() => printPV(lastPV)}
+                  onClick={() => downloadPV(lastPV)}
                   className="mt-2 text-sm font-bold text-primary underline"
                 >
-                  Réimprimer / Télécharger
+                  Télécharger le PDF
                 </button>
               </div>
             )}

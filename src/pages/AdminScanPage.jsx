@@ -6,7 +6,6 @@ import {
   Search,
   ArrowLeft,
   FileText,
-  Printer,
   Download,
   Calendar,
   MapPin,
@@ -29,7 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
   savePV,
-  printPV,
+  downloadPV,
   TYPE_LABELS,
   TYPE_BADGE,
   formatDateTimeFr,
@@ -244,9 +243,10 @@ const AdminScanPage = () => {
     }
     // Load the associated declaration
     let decl = null;
-    if (pv.declaration_id) {
+    const declId = pv.declaration_id || pv.related_declaration || null;
+    if (declId) {
       try {
-        decl = await pb.collection("declarations").getOne(pv.declaration_id);
+        decl = await pb.collection("declarations").getOne(declId);
       } catch (_) {}
     }
     setRestitutionDecl(decl);
@@ -258,6 +258,86 @@ const AdminScanPage = () => {
     }));
     setRestitutionMode(true);
     setSignatureData("");
+  };
+
+  // ── VALIDATE RESTITUTION (restitution PV scanned / queried) ──
+  const validateRestitution = async (pv) => {
+    const declLabel = pv.pv_number;
+    if (!window.confirm(`Valider la restitution (PV ${declLabel}) ?\nLa déclaration sera marquée « Restitué » et ne sera plus d'actualité.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      // 1. Déclaration liée au PV de restitution
+      const relatedId = pv.related_declaration || pv.declaration_id || null;
+      const relatedDecl = relatedId
+        ? await pb.collection("declarations").getOne(relatedId).catch(() => null)
+        : null;
+
+      // 2. Retrouver la déclaration perdue correspondante via les correspondances
+      let lostDecl = null;
+      if (relatedDecl) {
+        const ms = await pb
+          .collection("matches")
+          .getFullList({ filter: `found = "${relatedDecl.id}"`, requestKey: "rval-match" })
+          .catch(() => []);
+        if (ms.length) {
+          lostDecl = await pb
+            .collection("declarations")
+            .getOne(ms[0].lost)
+            .catch(() => null);
+        }
+      }
+
+      // 3. Marquer les déclarations « Restitué » (plus d'actualité)
+      const targets = [relatedDecl, lostDecl].filter(Boolean);
+      if (targets.length) {
+        await Promise.all(
+          targets.map((d) =>
+            pb
+              .collection("declarations")
+              .update(d.id, { status: "returned", pv_id: pv.id })
+              .catch(() => {}),
+          ),
+        );
+      }
+
+      // 4. Marquer le PV de restitution comme effectué
+      await pb.collection("pvs").update(pv.id, { status: "restitution_done" });
+
+      // 4b. Clôturer les PV de dépôt liés à la même déclaration
+      if (relatedDecl) {
+        const deposits = await pb
+          .collection("pvs")
+          .getFullList({
+            filter: `type = "deposit" && related_declaration = "${relatedDecl.id}"`,
+            requestKey: "rval-deposits",
+          })
+          .catch(() => []);
+        await Promise.all(
+          deposits
+            .filter((d) => d.status !== "restitution_done")
+            .map((d) => pb.collection("pvs").update(d.id, { status: "restitution_done" }).catch(() => {})),
+        );
+      }
+
+      // 5. Notifier le propriétaire
+      if (lostDecl) {
+        await onCompleteRestitution(pv, lostDecl, null).catch(() => {});
+      } else if (relatedDecl) {
+        await onCompleteRestitution(pv, relatedDecl, null).catch(() => {});
+      }
+
+      toast.success("Restitution validée !", {
+        description: `PV ${pv.pv_number} · déclaration marquée « Restitué »`,
+      });
+      setFoundPV({ ...pv, status: "restitution_done" });
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+      console.error("validateRestitution:", e);
+    } finally {
+      setBusy(false);
+    }
   };
 
   // ── SIGNATURE CANVAS ──
@@ -387,7 +467,7 @@ const AdminScanPage = () => {
           conformLossDeclaration: restitutionForm.conformLossDeclaration,
           conformId: restitutionForm.conformId,
         },
-        relatedDeclaration: restitutionDecl?.id || foundPV?.declaration_id || null,
+        relatedDeclaration: restitutionDecl?.id || foundPV?.declaration_id || foundPV?.related_declaration || null,
         generatedBy: user.id,
         generatedByName: user.name || user.email || "",
       });
@@ -409,8 +489,8 @@ const AdminScanPage = () => {
       } catch (_) {}
 
       // 4. Complete restitution workflow (notifications + archiving)
-      const decl = restitutionDecl || (foundPV?.declaration_id
-        ? await pb.collection("declarations").getOne(foundPV.declaration_id).catch(() => null)
+      const decl = restitutionDecl || (foundPV?.declaration_id || foundPV?.related_declaration
+        ? await pb.collection("declarations").getOne(foundPV?.declaration_id || foundPV?.related_declaration).catch(() => null)
         : null);
 
       if (decl) {
@@ -737,7 +817,7 @@ const AdminScanPage = () => {
 
         {/* Result */}
         {foundPV && (
-          <PVResult pv={foundPV} onStartRestitution={startRestitution} />
+          <PVResult pv={foundPV} onStartRestitution={startRestitution} onValidateRestitution={validateRestitution} />
         )}
 
         {notFound && (
@@ -755,7 +835,7 @@ const AdminScanPage = () => {
 };
 
 /* ── PV Result Card ────────────────────────────────────────────────────────── */
-const PVResult = ({ pv, onStartRestitution }) => {
+const PVResult = ({ pv, onStartRestitution, onValidateRestitution }) => {
   const d = pv.data || {};
   const isDeposit = pv.type === "deposit";
 
@@ -870,6 +950,15 @@ const PVResult = ({ pv, onStartRestitution }) => {
             <Pen className="h-4 w-4" /> Créer PV de restitution
           </button>
         )}
+        {!isDeposit && pv.status !== "restitution_done" && (
+          <button
+            type="button"
+            onClick={() => onValidateRestitution(pv)}
+            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-extrabold text-white dark:bg-green-500 active:scale-[0.98]"
+          >
+            <CheckCircle className="h-4 w-4" /> Valider la restitution
+          </button>
+        )}
         {pv.status === "restitution_done" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
             <CheckCircle className="h-3.5 w-3.5" /> Restitué
@@ -877,10 +966,10 @@ const PVResult = ({ pv, onStartRestitution }) => {
         )}
         <button
           type="button"
-          onClick={() => printPV(pv)}
+          onClick={() => downloadPV(pv)}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-extrabold text-primary-foreground active:scale-[0.98]"
         >
-          <Printer className="h-4 w-4" /> Imprimer
+          <Download className="h-4 w-4" /> Télécharger le PDF
         </button>
         <Link
           to={`/pv/${pv.pv_number}`}

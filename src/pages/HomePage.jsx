@@ -29,6 +29,8 @@ import InfoPopup from "@/components/InfoPopup";
 import BrandLogo from "@/components/BrandLogo";
 import HeroRotator from "@/components/HeroRotator";
 import { useBranding } from "@/contexts/BrandingContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
 import { DEFAULT_HERO } from "@/lib/brandingDefaults";
 import AutoScrollRow from "@/components/AutoScrollRow";
 import InstallPopup from "@/components/InstallPopup";
@@ -99,6 +101,7 @@ const card = "rounded-2xl border border-border/60 bg-card p-4 sm:p-5 shadow-sm";
 
 const HomePage = () => {
   const { branding } = useBranding();
+  const { user, isAdmin } = useAuth();
   const [stats, setStats] = useState({ lost: 0, found: 0, returned: 0 });
   const [categories, setCategories] = useState([]);
   const [catCounts, setCatCounts] = useState({});
@@ -116,6 +119,7 @@ const HomePage = () => {
         pb.collection("declarations").getList(1, 30, {
           filter: 'priority = true && status != "returned" && status != "blocked"',
           sort: "-created",
+          expand: "category",
           requestKey: "home-featured",
         }).catch(() => ({ items: [] })),
         fetchCategoryCounts(),
@@ -135,7 +139,15 @@ const HomePage = () => {
       // Boost encore actif (non expiré) et n'ayant pas épuisé son budget quotidien (3 vues/visiteur/jour)
       const shown = (get(4, { items: [] }).items || [])
         .filter((d) => !d.priority_until || new Date(d.priority_until).getTime() > now)
-        .filter((d) => readBoostViews(d.id) < BOOST_DAILY_VIEWS);
+        .filter((d) => readBoostViews(d.id) < BOOST_DAILY_VIEWS)
+        .map((d) => {
+          const masked = isSensitiveCategory(d) && !canViewSensitiveDetails(d, user, isAdmin);
+          return {
+            ...d,
+            _masked: masked,
+            _maskedTitle: masked ? (d.expand?.category?.name || "Document protégé") : d.title,
+          };
+        });
       // Chaque chargement du home = 1 vue pour les boosts affichés
       shown.forEach((d) => recordBoostView(d.id));
       setFeatured(shown);
@@ -157,7 +169,7 @@ const HomePage = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     load();
@@ -310,10 +322,14 @@ const HomePage = () => {
                     >
                       <div className="flex gap-3 p-3">
                         <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-red-500 to-rose-800">
-                          {featured[featIndex].photo_url ? (
+                          {featured[featIndex].photo_url && !featured[featIndex]._masked ? (
                             <img src={featured[featIndex].photo_url} alt={featured[featIndex].title} className="h-full w-full object-cover" loading="lazy" />
                           ) : (
-                            <div className={"h-full w-full " + (featured[featIndex].kind === "found" ? "bg-gradient-to-br from-emerald-500 to-emerald-800" : "bg-gradient-to-br from-red-500 to-rose-800")} />
+                            <div className={"h-full w-full grid place-items-center " + (featured[featIndex].kind === "found" ? "bg-gradient-to-br from-emerald-500 to-emerald-800" : "bg-gradient-to-br from-red-500 to-rose-800")}>
+                              {featured[featIndex]._masked ? (
+                                <Lock className="h-6 w-6 text-white/70" />
+                              ) : null}
+                            </div>
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
@@ -325,7 +341,7 @@ const HomePage = () => {
                               {featured[featIndex].kind === "found" ? "✨ Retrouvé" : "Perdu"}
                             </span>
                           </div>
-                          <p className="mt-1.5 line-clamp-2 text-sm font-extrabold leading-snug text-foreground">{featured[featIndex].title}</p>
+                          <p className="mt-1.5 line-clamp-2 text-sm font-extrabold leading-snug text-foreground">{featured[featIndex]._maskedTitle}</p>
                           <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
                             <MapPin className="h-3 w-3 shrink-0" />
                             <span className="truncate">{featured[featIndex].city || "Localité"}{featured[featIndex].zone ? ` · ${featured[featIndex].zone}` : ""}</span>

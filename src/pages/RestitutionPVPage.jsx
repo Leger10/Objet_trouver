@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import {
   FileCheck2,
   FileText,
-  Printer,
   Download,
   Eye,
   ShieldAlert,
@@ -23,7 +22,7 @@ import { LOGO_URL } from "@/lib/brandingDefaults";
 import { metaForSlug } from "@/lib/categories";
 import {
   savePV,
-  printPV,
+  downloadPV,
   generatePVNumber,
   formatDateFr,
   formatDateTimeFr,
@@ -31,7 +30,7 @@ import {
   maskPhonePV,
   qrUrl,
 } from "@/lib/pv";
-import { onCompleteRestitution, findNearestAdmin } from "@/lib/notificationService";
+import { onCompleteRestitution, findNearestAdmin, sendPush } from "@/lib/notificationService";
 import { notify } from "@/lib/retrouve";
 
 const card = "rounded-2xl border border-border bg-card p-5";
@@ -58,6 +57,19 @@ const EMPTY = {
   conformLossDeclaration: true,
   conformId: true,
   location: "Locaux RetrouveMoi",
+};
+
+const DEFAULT_LOCATION = EMPTY.location;
+
+const adminLocationLabel = (admin) => {
+  if (!admin) return "";
+  const place = [admin.quarter, admin.city].filter(Boolean).join(", ");
+  return place ? `${admin.name} · ${place}` : admin.name;
+};
+
+const userLocationLabel = (u) => {
+  if (!u) return "";
+  return [u.quarter, u.city].filter(Boolean).join(", ") || "";
 };
 
 const RestitutionPVPage = () => {
@@ -95,6 +107,13 @@ const RestitutionPVPage = () => {
       .catch(() => {});
   }, [isAdmin]);
 
+  // Préremplir le lieu de la restitution avec le lieu de l'admin connecté
+  useEffect(() => {
+    if (!isAdmin) return;
+    const ownLocation = userLocationLabel(user);
+    setForm((p) => (p.location.trim() && p.location !== DEFAULT_LOCATION ? p : { ...p, location: ownLocation || p.location }));
+  }, [isAdmin, user]);
+
   useEffect(() => {
     if (!claimDeclId) return;
     setLoadingClaim(true);
@@ -104,17 +123,21 @@ const RestitutionPVPage = () => {
         ? pb.collection("matches").getFirstListItem(`id = "${matchId}"`).catch(() => null)
         : Promise.resolve(null),
       pb.collection("categories").getFullList({ sort: "position" }).catch(() => []),
-    ]).then(async ([foundDecl, match, cats]) => {
+    ]).then(async ([claimDecl, match, cats]) => {
       setCategories(cats);
-      if (foundDecl) setSelectedDecl(foundDecl.id);
+      if (claimDecl) setSelectedDecl(claimDecl.id);
 
       const lostDecl = match?.lost
         ? await pb.collection("declarations").getOne(match.lost).catch(() => null)
         : null;
 
+      // Personne remplissant le PV = propriétaire de l'objet perdu (celui qui réclame)
+      const foundDecl = claimDecl;
+      const claimantUserId = lostDecl?.owner || foundDecl?.owner || null;
+
       const [claimantUser] = await Promise.all([
-        foundDecl?.owner
-          ? pb.collection("users").getOne(foundDecl.owner).catch(() => null)
+        claimantUserId
+          ? pb.collection("users").getOne(claimantUserId).catch(() => null)
           : Promise.resolve(null),
       ]);
 
@@ -142,7 +165,15 @@ const RestitutionPVPage = () => {
       }));
 
       if (foundDecl) {
-        findNearestAdmin(foundDecl.city || "", foundDecl.zone || "").then(setDepositAdmin);
+        findNearestAdmin(foundDecl.city || "", foundDecl.zone || "").then((admin) => {
+          setDepositAdmin(admin);
+          const loc = adminLocationLabel(admin);
+          setForm((p) =>
+            p.location.trim() && p.location !== DEFAULT_LOCATION
+              ? p
+              : { ...p, location: loc || p.location },
+          );
+        });
       }
     }).finally(() => setLoadingClaim(false));
   }, [claimDeclId, matchId]);
@@ -209,16 +240,19 @@ const RestitutionPVPage = () => {
       });
       const full = { ...rec, data: form };
       setLastPV(full);
-      printPV(full);
+      downloadPV(full);
 
       if (selectedDecl) {
         try {
-          const decl = await pb.collection("declarations").getOne(selectedDecl);
-          await pb.collection("declarations").update(selectedDecl, {
-            status: "returned",
-            pv_id: rec.id,
-          });
-          onCompleteRestitution(rec, decl, null).catch(() => {});
+          // Flow admin : restitution faite sur place → on marque la déclaration restituée
+          if (!isClaimantFlow) {
+            const decl = await pb.collection("declarations").getOne(selectedDecl);
+            await pb.collection("declarations").update(selectedDecl, {
+              status: "returned",
+              pv_id: rec.id,
+            });
+            onCompleteRestitution(rec, decl, null).catch(() => {});
+          }
         } catch (_) {}
       }
 
@@ -226,18 +260,37 @@ const RestitutionPVPage = () => {
         const foundDecl = await pb.collection("declarations").getOne(claimDeclId).catch(() => null);
         if (foundDecl) {
           const admin = await findNearestAdmin(foundDecl.city || "", foundDecl.zone || "");
-          const adminLine = admin
-            ? admin.matchLevel === "exact"
-              ? `${admin.name} (quartier ${admin.quarter})`
-              : `${admin.name} (${admin.city})`
-            : "l'administration RetrouveMoi la plus proche";
+          const adminLine = admin ? adminLocationLabel(admin) : "l'administration RetrouveMoi la plus proche";
+          const claimantLabel = [form.signatoryFirstName, form.signatoryName].filter(Boolean).join(" ") || "Le propriétaire";
 
           await notify(
             foundDecl.owner,
-            "L propriétaire a demandé la restitution — Déposez l objet",
-            `Le propriétaire de "${decl?.title || form.lossDescription || "l objet"}" a complété son PV de restitution.\n\nRendez-vous chez ${adminLine} pour déposer l objet et signer le PV de dépôt.\n\nPrésentez-vous avec une pièce d'identité. Un PV de dépôt sera établi par l'administrateur.`,
-            `/pv/${rec.pv_number}`,
+            "Le propriétaire a demandé la restitution — Déposez l'objet",
+            `Le propriétaire de "${foundDecl?.title || "l'objet"}" a complété son PV de restitution.\n\nRendez-vous chez ${adminLine} pour déposer l'objet et signer le PV de dépôt.\n\nPrésentez-vous avec une pièce d'identité. Un PV de dépôt sera établi par l'administrateur.`,
+            `/objet/${foundDecl.id}`,
           ).catch(() => {});
+          sendPush(
+            foundDecl.owner,
+            "Déposez l'objet chez l'admin",
+            `Le propriétaire a complété son PV de restitution. Rendez-vous chez ${adminLine} pour déposer l'objet.`,
+            `/objet/${foundDecl.id}`,
+          ).catch(() => {});
+
+          // Notifier l'admin : le client est attendu avec son PV (QR code) pour valider la restitution
+          if (admin) {
+            await notify(
+              admin.id,
+              "Demande de restitution en attente",
+              `${claimantLabel} a généré le PV de restitution N° ${rec.pv_number} pour "${foundDecl?.title || "l'objet"}".\n\nIl se présentera dans vos locaux avec ce PV et une pièce d'identité.\nScannez le QR code ou renseignez le N° du PV (menu « Scanner un PV ») pour le retrouver et valider la restitution.`,
+              `/admin/scan`,
+            ).catch(() => {});
+            sendPush(
+              admin.id,
+              "Demande de restitution en attente",
+              `PV ${rec.pv_number} — ${claimantLabel} attendu. Scannez le QR / numéro pour valider la restitution.`,
+              `/admin/scan`,
+            ).catch(() => {});
+          }
         }
       }
 
@@ -280,15 +333,15 @@ const RestitutionPVPage = () => {
           <div className="mt-4 rounded-2xl border border-accent/30 bg-accent/5 p-4">
             <p className="text-sm font-bold text-accent">Informations importantes</p>
             <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-              Après génération de ce PV, le déposant sera notifié de se rendre dans l&apos;administration la plus proche pour déposer l&apos;objet et signer le PV de dépôt. Présentez-vous sur place avec une pièce d&apos;identité.
+              La plupart des informations sont pré-remplies automatiquement : vous ne complétez que ce qui manque. Après génération de ce PV, le déposant sera notifié de déposer l&apos;objet dans l&apos;administration recommandée. Présentez-vous sur place avec ce PV (QR code) et une pièce d&apos;identité : l&apos;admin scannera votre PV et validera la restitution. La déclaration sera marquée « Restitué » et ne sera plus d&apos;actualité.
             </p>
             {depositAdmin && (
               <div className="mt-3 rounded-xl bg-accent/10 p-3">
                 <p className="flex items-center gap-1.5 text-xs font-bold text-accent">
-                  <MapPin className="h-3.5 w-3.5" /> Admin recommandé pour le dépôt
+                  <MapPin className="h-3.5 w-3.5" /> Admin recommandé pour la restitution
                 </p>
                 <p className="mt-1 text-sm font-extrabold">{depositAdmin.name}</p>
-                <p className="text-xs text-muted-foreground">{depositAdmin.city}{depositAdmin.quarter ? ` · ${depositAdmin.quarter}` : ""}</p>
+                <p className="text-xs text-muted-foreground">{depositAdmin.quarter}{depositAdmin.city ? ` · ${depositAdmin.city}` : ""} — ce lieu sera pré-rempli ci-dessous</p>
               </div>
             )}
           </div>
@@ -430,10 +483,10 @@ const RestitutionPVPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => printPV(previewPV)}
+                onClick={() => downloadPV(previewPV)}
                 className="flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold active:scale-[0.98]"
               >
-                <Printer className="h-4 w-4" /> Imprimer l'aperçu
+                <Download className="h-4 w-4" /> Télécharger le PDF
               </button>
               <button
                 type="button"
@@ -469,14 +522,15 @@ const RestitutionPVPage = () => {
                   <div className="mt-3 rounded-xl bg-white dark:bg-green-900/10 border border-green-200 dark:border-green-800/20 p-3">
                     <p className="text-xs font-bold text-green-700 dark:text-green-300 mb-2">Prochaines étapes :</p>
                     <ol className="text-xs text-green-600 dark:text-green-400 space-y-1.5 list-decimal list-inside leading-relaxed">
-                      <li>Téléchargez ou imprimez ce PV (ci-dessous)</li>
-                      <li>Présentez-vous dans l&apos;administration la plus proche avec une pièce d&apos;identité</li>
+                      <li>Téléchargez ou imprimez ce PV (ci-dessous) — un code QR permet de le vérifier</li>
+                      <li>Le déposant a été notifié : il déposera l&apos;objet chez l&apos;admin et un PV de dépôt sera établi</li>
                       {depositAdmin && (
                         <li className="font-bold">
-                          Admin recommandé : {depositAdmin.name} ({depositAdmin.city}{depositAdmin.quarter ? ` · ${depositAdmin.quarter}` : ""})
+                          Admin recommandé : {depositAdmin.name} ({depositAdmin.quarter}{depositAdmin.city ? ` · ${depositAdmin.city}` : ""})
                         </li>
                       )}
-                      <li>L&apos;administrateur établira le PV de dépôt et notifiera le déposant</li>
+                      <li>Présentez-vous sur place avec ce PV (QR code) et une pièce d&apos;identité</li>
+                      <li>L&apos;admin scannera votre QR code (ou saisira le N° du PV) et validera la restitution — la déclaration sera marquée « Restitué » et ne sera plus d&apos;actualité</li>
                     </ol>
                   </div>
                 )}
@@ -484,10 +538,10 @@ const RestitutionPVPage = () => {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => printPV(lastPV)}
+                    onClick={() => downloadPV(lastPV)}
                     className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-extrabold text-white active:scale-[0.98]"
                   >
-                    <Download className="h-4 w-4" /> Télécharger / Imprimer le PV
+                    <Download className="h-4 w-4" /> Télécharger le PDF
                   </button>
                   <Link
                     to={`/pv/${lastPV.pv_number}`}
@@ -517,12 +571,17 @@ const PreviewRestitution = ({ pv }) => {
       <span className="font-semibold">{v || "—"}</span>
     </div>
   );
-  const V = ({ ok, label }) => (
-    <div className="flex items-center gap-2 py-1 text-xs">
-      <span className={`grid h-4 w-4 place-items-center rounded text-[10px] font-bold ${ok ? "bg-accent text-accent-foreground" : "bg-muted text-muted-foreground"}`}>
-        {ok ? "✓" : "✕"}
-      </span>
+  const V = ({ label }) => (
+    <div className="flex items-center justify-between gap-2 py-1 text-[11px]">
       <span className="font-semibold">{label}</span>
+      <span className="flex shrink-0 items-center gap-3">
+        <span className="inline-flex items-center gap-1 font-bold">
+          <span className="inline-block h-3.5 w-3.5 rounded border-2 border-slate-500 bg-white" /> OUI
+        </span>
+        <span className="inline-flex items-center gap-1 font-bold">
+          <span className="inline-block h-3.5 w-3.5 rounded border-2 border-slate-500 bg-white" /> NON
+        </span>
+      </span>
     </div>
   );
   return (
@@ -544,11 +603,13 @@ const PreviewRestitution = ({ pv }) => {
         <Row l="Catégorie" v={d.objectCategory} />
         <Row l="Description" v={d.objectDescription} />
         <Row l="État" v={d.objectState} />
+        <Row l="Lieu de la restitution" v={pv.location} />
       </div>
       <div className="mt-2 space-y-0.5">
-        <V ok={d.conformObject} label="Correspond à la déclaration de perte" />
-        <V ok={d.conformLossDeclaration} label="Copie de la déclaration présentée" />
-        <V ok={d.conformId} label="Pièce d'identité présentée" />
+        <p className="text-[10px] font-extrabold uppercase text-muted-foreground">Vérification de conformité</p>
+        <V label="Correspond à la déclaration de perte" />
+        <V label="Copie de la déclaration présentée" />
+        <V label="Pièce d'identité présentée" />
       </div>
       <p className="mt-3 rounded-lg bg-muted p-2 text-[10px] font-semibold leading-relaxed">
         Je certifie par la présente avoir reçu l'objet décrit ci-dessus et reconnaître qu'il correspond à ma déclaration de perte.
