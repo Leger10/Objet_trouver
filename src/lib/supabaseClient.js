@@ -1,475 +1,378 @@
-import { createClient } from '@supabase/supabase-js';
+'use client';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import { createAuthClient } from 'better-auth/react';
+import env from './env';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Variables Supabase manquantes dans .env');
+// ════════════════════════════════════════════════════════════
+// CLIENT PRINCIPAL — pont vers les API Routes Next.js
+// (Prisma + Better Auth + Cloudinary)
+// ════════════════════════════════════════════════════════════
+
+export const authClient = createAuthClient();
+
+// ── Helpers API ──
+
+async function apiJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'include',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) {
+    const err = new Error(data.error || `Erreur API (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    storageKey: 'objetrouve-auth'
+async function pbApi(collection, action, extra = {}, data = null) {
+  if (data instanceof FormData) {
+    const form = new FormData();
+    if (data) {
+      for (const [k, v] of data.entries()) form.append(k, v);
+    }
+    form.append('action', action);
+    form.append('collection', collection);
+    for (const [k, v] of Object.entries(extra)) {
+      if (v !== undefined && v !== null) form.append(k, String(v));
+    }
+    const res = await fetch('/api/pb', { method: 'POST', body: form, credentials: 'include' });
+    const result = await res.json().catch(() => ({}));
+    if (!result.ok) throw new Error(result.error || 'Erreur API');
+    return result;
   }
-});
+  return apiJson('/api/pb', { action, collection, ...extra, data });
+}
 
-// ============================================================
-// ADAPTATEUR POCKETBASE → SUPABASE
-// ============================================================
+// ── Événements d'auth (compat onAuthStateChange) ──
 
-const EXPAND_MAP = {
-  claims: {
-    declaration: { column: 'declaration', table: 'declarations' },
-    claimant: { column: 'claimant', table: 'users' },
+const authListeners = new Set();
+function emitAuth(event, session) {
+  authListeners.forEach((cb) => {
+    try { cb(event, session); } catch { /* noop */ }
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// SHIM SUPABASE (auth + from() + storage + rpc)
+// ════════════════════════════════════════════════════════════
+
+class QueryBuilder {
+  constructor(table) {
+    this.table = table;
+    this.filters = [];
+    this.sorts = [];
+    this.limitNum = undefined;
+    this.singleFlag = false;
+    this.countExact = false;
+    this.insertData = undefined;
+    this.updateData = undefined;
+    this.deleteMode = false;
+    this.executed = false;
+  }
+
+  select(_cols = '*', opts = {}) {
+    this.countExact = !!opts.count;
+    return this;
+  }
+
+  _cond(col, op, val) {
+    const v = typeof val === 'string' ? `'${val.replace(/'/g, "\\'")}'` : val;
+    const colName = /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(col) ? col : `"${col}"`;
+    this.filters.push(`${colName} ${op} ${v}`);
+    return this;
+  }
+
+  eq(col, val) { return this._cond(col, '=', val); }
+  neq(col, val) { return this._cond(col, '!=', val); }
+  gt(col, val) { return this._cond(col, '>', val); }
+  gte(col, val) { return this._cond(col, '>=', val); }
+  lt(col, val) { return this._cond(col, '<', val); }
+  lte(col, val) { return this._cond(col, '<=', val); }
+  ilike(col, val) { return this._cond(col, '~', String(val).replace(/%/g, '')); }
+
+  in(col, vals) {
+    const arr = Array.isArray(vals) ? vals : [];
+    const ors = arr.map((v) => {
+      const sv = typeof v === 'string' ? `'${v.replace(/'/g, "\\'")}'` : v;
+      return `${col} = ${sv}`;
+    });
+    this.filters.push(`(${ors.join(' || ')})`);
+    return this;
+  }
+
+  or(str) {
+    this.filters.push(`(${str.replace(/,/g, ' || ')})`);
+    return this;
+  }
+
+  order(col, opts = {}) {
+    this.sorts.push(`${opts.ascending === false ? '-' : ''}${col}`);
+    return this;
+  }
+
+  limit(n) { this.limitNum = n; return this; }
+  range(s, e) { this.range = [s, e]; return this; }
+  single() { this.singleFlag = true; return this; }
+  maybeSingle() { this.singleFlag = true; this.maybe = true; return this; }
+
+  insert(data) { this.insertData = data; return this; }
+  update(data) { this.updateData = data; return this; }
+  delete() { this.deleteMode = true; return this; }
+
+  _extractId() {
+    for (const f of this.filters) {
+      const m = f.match(/^"?([A-Za-z0-9_]+)"?\s*=\s*'([^']+)'$/);
+      if (m && m[1] === 'id') return m[2];
+    }
+    return null;
+  }
+
+  async exec() {
+    this.executed = true;
+    const filter = this.filters.join(' && ');
+    const sort = this.sorts.join(',');
+
+    if (this.insertData !== undefined) {
+      const { item } = await pbApi(this.table, 'create', {}, this.insertData);
+      return { data: item, count: null, error: null };
+    }
+
+    if (this.updateData !== undefined) {
+      const id = this._extractId();
+      if (!id) return { data: null, count: null, error: new Error('id requis pour update') };
+      const { item } = await pbApi(this.table, 'update', { id }, this.updateData);
+      return { data: item, count: null, error: null };
+    }
+
+    if (this.deleteMode) {
+      const id = this._extractId();
+      if (id) await pbApi(this.table, 'delete', { id });
+      return { data: null, count: null, error: null };
+    }
+
+    const { items, totalItems } = await pbApi(this.table, 'getList', {
+      filter,
+      sort,
+      page: 1,
+      perPage: this.limitNum || 500,
+    });
+    let rows = items;
+    if (this.limitNum && rows?.length > this.limitNum) rows = rows.slice(0, this.limitNum);
+    if (this.range) rows = (rows || []).slice(this.range[0], this.range[1] + 1);
+
+    if (this.singleFlag) {
+      const row = rows?.[0] || null;
+      return { data: row, count: row ? 1 : this.countExact ? 0 : null, error: null };
+    }
+    return { data: rows, count: this.countExact ? totalItems : null, error: null };
+  }
+
+  then(resolve, reject) {
+    return Promise.resolve(this.exec()).then(resolve, reject);
+  }
+}
+
+export const supabase = {
+  auth: {
+    async getSession() {
+      const { data, error } = await authClient.getSession();
+      return { data: { session: data }, error };
+    },
+    async getUser() {
+      const { data, error } = await authClient.getUser();
+      return { data: { user: data?.user || null }, error };
+    },
+    async signInWithPassword({ email, password }) {
+      const { data, error } = await authClient.signIn.email({ email, password });
+      if (!error && data?.user) emitAuth('SIGNED_IN', data);
+      return {
+        data: data ? { user: data.user, session: data.session || null } : null,
+        error,
+      };
+    },
+    async signUp({ email, password, options = {} }) {
+      const extra = options?.data || {};
+      const { data, error } = await authClient.signUp.email({
+        email,
+        password,
+        name: extra.name || '',
+        phone: extra.phone || '',
+        city: extra.city || '',
+        quarter: extra.quarter || '',
+        referredBy: extra.referred_by || '',
+      });
+      if (!error && data?.user) emitAuth('SIGNED_IN', { user: data.user });
+      return {
+        data: data ? { user: data.user, session: data.session || null } : null,
+        error,
+      };
+    },
+    async signOut() {
+      const { error } = await authClient.signOut();
+      if (!error) emitAuth('SIGNED_OUT', null);
+      return { error };
+    },
+    async updateUser({ password }) {
+      const { data, error } = await authClient.resetPassword({ newPassword: password });
+      return { data, error };
+    },
+    async resetPasswordForEmail(email, { redirectTo } = {}) {
+      const { error } = await authClient.forgetPassword({ email, redirectTo });
+      return { error };
+    },
+    onAuthStateChange(cb) {
+      authListeners.add(cb);
+      return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } };
+    },
   },
-  matches: {
-    lost: { column: 'lost', table: 'declarations' },
-    found: { column: 'found', table: 'declarations' },
+
+  from(table) {
+    return new QueryBuilder(table);
   },
-  reports: {
-    declaration: { column: 'declaration', table: 'declarations' },
-    reporter: { column: 'reporter', table: 'users' },
+
+  rpc(name, params = {}) {
+    return apiJson('/api/rpc', { name, params });
   },
-  declarations: {
-    owner: { column: 'owner', table: 'users' },
-    category: { column: 'category', table: 'categories', keyColumn: 'slug' },
-  },
-  withdrawals: {
-    user: { column: 'user', table: 'users' },
-  },
-  payments: {
-    user: { column: 'user', table: 'users' },
-  },
-  subscriptions: {
-    user: { column: 'user', table: 'users' },
-  },
-  pro_accounts: {
-    user: { column: 'user', table: 'users' },
-    owner: { column: 'user', table: 'users' },
-  },
-  pvs: {
-    user: { column: 'user', table: 'users' },
-    generated_by: { column: 'user', table: 'users' },
-    related_declaration: { column: 'declaration_id', table: 'declarations' },
-    declaration_id: { column: 'declaration_id', table: 'declarations' },
-  },
-  notifications: {
-    user: { column: 'user', table: 'users' },
-  },
-  point_purchases: {
-    user: { column: 'user', table: 'users' },
-  },
-  gift_orders: {
-    user: { column: 'user', table: 'users' },
+
+  storage: {
+    from(bucket) {
+      const folder = bucket === 'branding' ? '/branding' : '';
+      return {
+        upload: async (_path, file, _opts = {}) => {
+          try {
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('folder', folder);
+            const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' });
+            const result = await res.json().catch(() => ({}));
+            if (!result.ok) return { data: null, error: new Error(result.error || 'Upload échoué') };
+            return { data: { path: result.url, publicId: result.publicId }, error: null };
+          } catch (e) {
+            return { data: null, error: e };
+          }
+        },
+        getPublicUrl: (path) => {
+          if (path && /^https?:\/\//.test(path)) return { data: { publicUrl: path }, error: null };
+          return { data: { publicUrl: path || '' }, error: null };
+        },
+        remove: async (paths = []) => {
+          for (const p of paths) {
+            try {
+              await fetch('/api/files/remove', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ publicId: p }),
+              });
+            } catch { /* best-effort */ }
+          }
+          return { error: null };
+        },
+      };
+    },
   },
 };
 
-class SupabaseCollection {
-  constructor(collectionName, supabaseClient) {
+// ════════════════════════════════════════════════════════════
+// ADAPTATEUR POCKETBASE → API /api/pb
+// ════════════════════════════════════════════════════════════
+
+class PbCollection {
+  constructor(collectionName) {
     this.collectionName = collectionName;
-    this.supabase = supabaseClient;
-  }
-
-  async _expandData(items, expandStr) {
-    if (!items?.length || !expandStr) return items;
-    const names = expandStr.split(',').map(s => s.trim()).filter(Boolean);
-    const config = EXPAND_MAP[this.collectionName];
-    if (!config) return items;
-
-    const fetches = [];
-    for (const name of names) {
-      const cfg = config[name];
-      if (!cfg) continue;
-      const keyCol = cfg.keyColumn || 'id';
-      const values = [...new Set(items.map(i => i[cfg.column]).filter(Boolean))];
-      if (values.length === 0) {
-        items.forEach(i => { i.expand = i.expand || {}; i.expand[name] = null; });
-        continue;
-      }
-      fetches.push(
-        this.supabase
-          .from(cfg.table)
-          .select('*')
-          .in(keyCol, values)
-          .then(({ data }) => {
-            const map = new Map((data || []).map(r => [r[keyCol], r]));
-            items.forEach(i => {
-              i.expand = i.expand || {};
-              i.expand[name] = map.get(i[cfg.column]) || null;
-            });
-          })
-      );
-    }
-    await Promise.all(fetches);
-    return items;
-  }
-
-  _applySort(query, sort) {
-    if (!sort) return query;
-    const fields = sort.split(',').map(s => s.trim()).filter(Boolean);
-    for (const field of fields) {
-      const isDesc = field.startsWith('-');
-      let cleanField = isDesc ? field.slice(1) : field;
-      if (cleanField === 'created') cleanField = 'created_at';
-      if (cleanField === 'updated') cleanField = 'updated_at';
-      query = query.order(cleanField, { ascending: !isDesc });
-    }
-    return query;
-  }
-
-  _applyCondition(query, cond) {
-    if (cond.type === 'or' && cond.conditions?.length) {
-      const orFilter = cond.conditions.map((c) => {
-        const f = c.field;
-        switch (c.operator) {
-          case '=': return `${f}.eq.${c.value}`;
-          case '!=': return `${f}.neq.${c.value}`;
-          case '~': return `${f}.ilike.%${c.value}%`;
-          case '>=': return `${f}.gte.${c.value}`;
-          case '<=': return `${f}.lte.${c.value}`;
-          default: return `${f}.eq.${c.value}`;
-        }
-      }).join(',');
-      return query.or(orFilter);
-    }
-    if (cond.field && cond.operator && cond.value !== undefined && cond.value !== null && cond.value !== '') {
-      const field = cond.quoted ? `"${cond.field}"` : cond.field;
-      switch (cond.operator) {
-        case '=': return query.eq(field, cond.value);
-        case '~': return query.ilike(field, `%${cond.value}%`);
-        case '>=': return query.gte(field, cond.value);
-        case '<=': return query.lte(field, cond.value);
-        case '!=': return query.neq(field, cond.value);
-        default: return query;
-      }
-    }
-    return query;
   }
 
   async getList(page = 1, perPage = 50, options = {}) {
-    const { filter, sort, expand, ...rest } = options;
-    
-    let query = this.supabase
-      .from(this.collectionName)
-      .select('*', { count: 'exact' });
+    const { filter, sort, expand } = options;
+    const { items, totalItems, page: p, perPage: pp } = await pbApi(
+      this.collectionName,
+      'getList',
+      { filter, sort, expand, page, perPage }
+    );
+    return { items, totalItems, page: p, perPage: pp };
+  }
 
-    const start = (page - 1) * perPage;
-    const end = start + perPage - 1;
-    query = query.range(start, end);
-
-    // Filtres PocketBase → Supabase
-    if (filter) {
-      const conditions = this.parsePocketBaseFilter(filter);
-      for (const cond of conditions) {
-        query = this._applyCondition(query, cond);
-      }
-    }
-
-    // Tri
-    query = this._applySort(query, sort);
-
-    const { data, count, error } = await query;
-
-    if (error) {
-      console.error(`❌ Erreur getList ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    const items = data || [];
-    if (expand) await this._expandData(items, expand);
-
-    return {
-      items,
-      totalItems: count || 0,
-      page,
-      perPage
-    };
+  async getFullList(options = {}) {
+    const { filter, sort, expand } = options;
+    const { items } = await pbApi(this.collectionName, 'getFullList', { filter, sort, expand });
+    return items;
   }
 
   async getOne(id, options = {}) {
     const { expand } = options;
-    const query = this.supabase
-      .from(this.collectionName)
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(`❌ Erreur getOne ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    if (data && expand) await this._expandData([data], expand);
-
-    return data;
-  }
-
-  async getFirstListItem(filter, options = {}) {
-    const { sort, expand, ...rest } = options;
-    
-    let query = this.supabase
-      .from(this.collectionName)
-      .select('*')
-      .limit(1);
-
-    // Parser le filtre PocketBase
-    if (filter) {
-      const conditions = this.parsePocketBaseFilter(filter);
-      for (const cond of conditions) {
-        query = this._applyCondition(query, cond);
-      }
-    }
-
-    query = this._applySort(query, sort);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(`❌ Erreur getFirstListItem ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    if (!data || data.length === 0) {
-      throw new Error('Aucun enregistrement trouvé');
-    }
-
-    const item = data[0];
-    if (expand) await this._expandData([item], expand);
-
+    const { item } = await pbApi(this.collectionName, 'getOne', { id, expand });
     return item;
   }
 
-  async create(data) {
-    let payload = data;
-    let fileField = null;
-    let fileObj = null;
-
-    if (data instanceof FormData) {
-      payload = {};
-      for (const [key, value] of data.entries()) {
-        if (value instanceof File && value.size > 0) {
-          fileField = key;
-          fileObj = value;
-        } else if (!(value instanceof File)) {
-          payload[key] = value;
-        }
-      }
-    }
-
-    // Correction des booléens
-    for (const key of ['priority', 'auto_renew']) {
-      if (payload[key] === 'true') payload[key] = true;
-      if (payload[key] === 'false') payload[key] = false;
-    }
-
-    // Upload du fichier s'il y en a un
-    if (fileObj && fileField) {
-      try {
-        const ext = fileObj.name?.split('.').pop() || 'jpg';
-        const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error: uploadErr } = await this.supabase.storage
-          .from('uploads')
-          .upload(path, fileObj, { cacheControl: '3600', upsert: false });
-        if (!uploadErr) {
-          const { data: urlData } = this.supabase.storage.from('uploads').getPublicUrl(path);
-          payload[fileField] = urlData?.publicUrl || '';
-          if (fileField === 'photo') payload.photo_url = urlData?.publicUrl || '';
-        } else {
-          console.warn('⚠️ Upload fichier échoué:', uploadErr.message);
-        }
-      } catch (uploadErr) {
-        console.warn('⚠️ Upload fichier erreur:', uploadErr);
-      }
-    }
-
-    const { data: result, error } = await this.supabase
-      .from(this.collectionName)
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(`❌ Erreur create ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    return result;
+  async getFirstListItem(filter = '', options = {}) {
+    const { sort, expand } = options;
+    const { item } = await pbApi(this.collectionName, 'getFirstListItem', { filter, sort, expand });
+    return item;
   }
 
-  async update(id, data) {
-    let payload = data;
-    const fileUploads = [];
+  async count(filter = '') {
+    const { count } = await pbApi(this.collectionName, 'count', { filter });
+    return count;
+  }
 
-    if (data instanceof FormData) {
-      payload = {};
-      for (const [key, value] of data.entries()) {
-        if (value instanceof File && value.size > 0) {
-          fileUploads.push({ field: key, file: value });
-        } else if (!(value instanceof File)) {
-          payload[key] = value;
-        }
-      }
-    }
+  async create(data, _options = {}) {
+    const { item } = await pbApi(this.collectionName, 'create', {}, data);
+    return item;
+  }
 
-    for (const key of ['priority', 'auto_renew']) {
-      if (payload[key] === 'true') payload[key] = true;
-      if (payload[key] === 'false') payload[key] = false;
-    }
-
-    // Upload files to storage
-    for (const { field, file } of fileUploads) {
-      try {
-        const ext = file.name?.split('.').pop() || 'jpg';
-        const path = `${id}/${field}-${Date.now()}.${ext}`;
-        const bucket = this.collectionName === 'branding_settings' ? 'branding' : 'uploads';
-        const { error: uploadErr } = await this.supabase.storage
-          .from(bucket)
-          .upload(path, file, { cacheControl: '3600', upsert: true });
-        if (!uploadErr) {
-          const { data: urlData } = this.supabase.storage.from(bucket).getPublicUrl(path);
-          payload[field] = urlData?.publicUrl || path;
-        } else {
-          console.warn(`⚠️ Upload ${field} échoué:`, uploadErr.message);
-        }
-      } catch (err) {
-        console.warn(`⚠️ Upload ${field} erreur:`, err);
-      }
-    }
-
-    const { data: result, error } = await this.supabase
-      .from(this.collectionName)
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(`❌ Erreur update ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    return result;
+  async update(id, data, _options = {}) {
+    const { item } = await pbApi(this.collectionName, 'update', { id }, data);
+    return item;
   }
 
   async delete(id) {
-    const { error } = await this.supabase
-      .from(this.collectionName)
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error(`❌ Erreur delete ${this.collectionName}:`, error);
-      throw error;
-    }
-
+    await pbApi(this.collectionName, 'delete', { id });
     return true;
-  }
-
-  async getFullList(options = {}) {
-    const { filter, sort, expand, ...rest } = options;
-    
-    let query = this.supabase
-      .from(this.collectionName)
-      .select('*');
-
-    if (filter) {
-      const conditions = this.parsePocketBaseFilter(filter);
-      for (const cond of conditions) {
-        query = this._applyCondition(query, cond);
-      }
-    }
-
-    query = this._applySort(query, sort);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error(`❌ Erreur getFullList ${this.collectionName}:`, error);
-      throw error;
-    }
-
-    const items = data || [];
-    if (expand) await this._expandData(items, expand);
-
-    return items;
-  }
-
-  // Convertit les valeurs string "true"/"false" en booléens pour les colonnes booléennes
-  _normValue(v) {
-    if (v === 'true') return true;
-    if (v === 'false') return false;
-    return v;
-  }
-
-  parsePocketBaseFilter(filter) {
-    const conditions = [];
-    const parts = filter.split(/\s*&&\s*/);
-    
-    for (const part of parts) {
-      const trimmed = part.trim();
-      
-      // Support OR groups: (field1 ~ val || field2 ~ val)
-      const orMatch = trimmed.match(/^\((.+)\)$/);
-      if (orMatch && orMatch[1].includes('||')) {
-        const orParts = orMatch[1].split(/\s*\|\|\s*/);
-        const orConds = [];
-        for (const orPart of orParts) {
-          const m = orPart.trim().match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
-          if (m) {
-            orConds.push({ field: m[1], operator: m[2], value: this._normValue(m[3]) });
-          }
-        }
-        if (orConds.length > 0) {
-          conditions.push({ type: 'or', conditions: orConds });
-        }
-        continue;
-      }
-
-      // Support quoted column names like "user" = :val
-      const matchQuoted = trimmed.match(/^"([^"]+)"\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
-      if (matchQuoted) {
-        conditions.push({
-          field: matchQuoted[1],
-          operator: matchQuoted[2],
-          value: this._normValue(matchQuoted[3]),
-          quoted: true,
-        });
-        continue;
-      }
-      const match = trimmed.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*(=|!=|~|>=|<=)\s*['"]?(.+?)['"]?$/);
-      if (match) {
-        conditions.push({
-          field: match[1],
-          operator: match[2],
-          value: this._normValue(match[3])
-        });
-      }
-    }
-    
-    return conditions;
   }
 }
 
-// ============================================================
-// CLASSE POCKETBASE COMPATIBLE AVEC BRANDING
-// ============================================================
-
 class PocketBaseCompatible {
-  constructor(supabaseClient) {
-    this.supabase = supabaseClient;
+  constructor() {
     this.authStore = {
       record: null,
       token: null,
-      isAuth: false
+      isAuth: false,
     };
     this.collections = {};
+    this.supabase = supabase;
+    this.files = {
+      getURL: (item, field, _options = {}) => {
+        if (!item || !field) return '';
+        const val = item[field];
+        if (!val) return '';
+        if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+          return val;
+        }
+        return '';
+      },
+      upload: async (_bucket, _path, file) => {
+        const { data, error } = await supabase.storage.from('uploads').upload(_path, file);
+        if (error) throw error;
+        return data;
+      },
+      delete: async (_bucket, _path) => {
+        await supabase.storage.from('uploads').remove([_path]);
+      },
+      getBrandingUrl: (item, field = 'logo_file', _options = {}) => {
+        if (!item) return '';
+        const val = item[field];
+        if (!val) return item.logo_url || '';
+        if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
+          return val;
+        }
+        return item.logo_url || '';
+      },
+    };
   }
 
-  // PocketBase-style filter template: pb.filter('kind = {:k}', { k: 'lost' })
   filter(template, params = {}) {
     let result = template;
     for (const [key, val] of Object.entries(params)) {
@@ -480,173 +383,57 @@ class PocketBaseCompatible {
 
   collection(name) {
     if (!this.collections[name]) {
-      this.collections[name] = new SupabaseCollection(name, this.supabase);
+      this.collections[name] = new PbCollection(name);
     }
     return this.collections[name];
   }
 
   async authWithPassword(email, password) {
-    const { data, error } = await this.supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-
+    const { data, error } = await authClient.signIn.email({ email, password });
     if (error) throw error;
-
-    this.authStore.record = data.user;
-    this.authStore.token = data.session?.access_token || null;
-    this.authStore.isAuth = true;
-
-    return data;
+    const user = data?.user || null;
+    this.authStore.record = user;
+    this.authStore.token = data?.token || null;
+    this.authStore.isAuth = !!user;
+    return { user, token: data?.token || null, session: null };
   }
 
   async authWithSignUp(email, password, userData = {}) {
-    const { data, error } = await this.supabase.auth.signUp({
+    const { data, error } = await authClient.signUp.email({
       email,
       password,
-      options: {
-        data: {
-          name: userData.name || '',
-          phone: userData.phone || '',
-          city: userData.city || '',
-          quarter: userData.quarter || '',
-          referred_by: userData.referred_by || '',
-        }
-      }
+      name: userData.name || '',
+      phone: userData.phone || '',
+      city: userData.city || '',
+      quarter: userData.quarter || '',
+      referredBy: userData.referred_by || '',
     });
-
     if (error) throw error;
-
-    this.authStore.record = data.user;
-    this.authStore.token = data.session?.access_token || null;
-    this.authStore.isAuth = !!data.session;
-
-    return data;
+    const user = data?.user || null;
+    this.authStore.record = user;
+    this.authStore.token = data?.token || null;
+    this.authStore.isAuth = !!user;
+    return { user, token: data?.token || null, session: data?.session || (data?.token ? { access_token: data.token } : null) };
   }
 
   async authLogout() {
-    const { error } = await this.supabase.auth.signOut();
-    if (error) throw error;
-    
+    await authClient.signOut();
     this.authStore.record = null;
     this.authStore.token = null;
     this.authStore.isAuth = false;
+    emitAuth('SIGNED_OUT', null);
   }
 
   getCurrentUser() {
-    return this.supabase.auth.getUser();
+    return authClient.getUser();
   }
-
-  // ============================================================
-  // GESTION DES FICHIERS (BRANDING)
-  // ============================================================
-  
-  files = {
-    /**
-     * Récupère l'URL d'un fichier stocké dans Supabase Storage
-     * @param {Object} item - L'objet contenant la référence du fichier
-     * @param {string} field - Le nom du champ contenant le nom du fichier
-     * @param {Object} options - Options (thumb, etc.)
-     * @returns {string} L'URL publique du fichier
-     */
-    getURL: (item, field, options = {}) => {
-      if (!item || !field) return '';
-      
-      const val = item[field];
-      if (!val) return '';
-      
-      // If the value is already a full URL, return it directly
-      if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
-        return options.thumb ? `${val}?width=${options.thumb.split('x')[0]}&height=${options.thumb.split('x')[1]}&resize=cover` : val;
-      }
-      
-      let bucket = 'uploads';
-      if (item.collectionName === 'branding_settings' || field === 'logo_file' || field === 'hero_file') {
-        bucket = 'branding';
-      }
-      
-      const path = `${item.id}/${val}`;
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
-      
-      if (options.thumb) {
-        const [width, height] = options.thumb.split('x');
-        return `${url}?width=${width}&height=${height}&resize=cover`;
-      }
-      
-      return url;
-    },
-    
-    /**
-     * Upload d'un fichier vers Supabase Storage
-     * @param {string} bucket - Nom du bucket
-     * @param {string} path - Chemin du fichier
-     * @param {File} file - Le fichier à uploader
-     * @returns {Promise<Object>} Les données de l'upload
-     */
-    upload: async (bucket, path, file) => {
-      const { data, error } = await this.supabase.storage
-        .from(bucket)
-        .upload(path, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
-      
-      if (error) throw error;
-      return data;
-    },
-    
-    /**
-     * Supprime un fichier du storage
-     * @param {string} bucket - Nom du bucket
-     * @param {string} path - Chemin du fichier
-     * @returns {Promise<void>}
-     */
-    delete: async (bucket, path) => {
-      const { error } = await this.supabase.storage
-        .from(bucket)
-        .remove([path]);
-      
-      if (error) throw error;
-    },
-    
-    /**
-     * Récupère l'URL d'un fichier de branding
-     * @param {Object} item - L'objet branding
-     * @param {string} field - Le champ du fichier
-     * @param {Object} options - Options
-     * @returns {string} L'URL du fichier
-     */
-    getBrandingUrl: (item, field = 'logo_file', options = {}) => {
-      if (!item) return '';
-      
-      const val = item[field];
-      if (!val) return item.logo_url || '';
-      
-      // If the value is already a full URL, return it directly
-      if (typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'))) {
-        return options.thumb ? `${val}?width=${options.thumb.split('x')[0]}&height=${options.thumb.split('x')[1]}&resize=cover` : val;
-      }
-      
-      const path = `${item.id}/${val}`;
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/branding/${path}`;
-      
-      if (options.thumb) {
-        const [width, height] = options.thumb.split('x');
-        return `${url}?width=${width}&height=${height}&resize=cover`;
-      }
-      
-      return url;
-    }
-  };
 }
 
-// ============================================================
-// EXPORT
-// ============================================================
+// ════════════════════════════════════════════════════════════
+// EXPORTS (interface inchangée)
+// ════════════════════════════════════════════════════════════
 
-export const pb = new PocketBaseCompatible(supabase);
-
+export const pb = new PocketBaseCompatible();
 export const supabaseAuth = supabase.auth;
 export const supabaseStorage = supabase.storage;
-
 export default supabase;

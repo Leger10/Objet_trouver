@@ -1,7 +1,6 @@
 // Service de notifications : in-app + push (OneSignal)
 import { pb, supabase } from "./supabaseClient";
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+import env from "./env";
 
 // ─── HELPER: Get deposit PV info for a declaration ───
 
@@ -45,7 +44,7 @@ export const createNotification = async (userId, title, body, link = "/tableau-d
 
 // ─── PUSH via Netlify function ───
 
-const SITE_URL = import.meta.env.VITE_SITE_URL || "https://retrouvemoi.netlify.app";
+const SITE_URL = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SITE_URL) || env?.NEXT_PUBLIC_SITE_URL || env?.VITE_SITE_URL || "http://localhost:3000";
 
 export const sendPush = async (userId, title, body, link) => {
   try {
@@ -86,7 +85,7 @@ export const notifyAllUsers = async (senderId, title, body, link) => {
 let onesignalReady = false;
 
 export const initOneSignal = async () => {
-  const appId = import.meta.env.VITE_ONESIGNAL_APP_ID;
+  const appId = env.VITE_ONESIGNAL_APP_ID;
   if (!appId || onesignalReady) return;
 
   try {

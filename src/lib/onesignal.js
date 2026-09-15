@@ -1,8 +1,9 @@
 import OneSignal from 'react-onesignal';
+import env from './env';
 
 let initialized = false;
 
-const ONESIGNAL_APP_ID = import.meta.env.VITE_ONESIGNAL_APP_ID;
+const ONESIGNAL_APP_ID = env.VITE_ONESIGNAL_APP_ID;
 
 export async function initOneSignal() {
   if (initialized || !ONESIGNAL_APP_ID) return;
@@ -12,7 +13,7 @@ export async function initOneSignal() {
     appId: ONESIGNAL_APP_ID,
     serviceWorkerPath: "push/onesignal/OneSignalSDKWorker.js",
     serviceWorkerParam: { scope: "/push/onesignal/" },
-    allowLocalhostAsSecureOrigin: import.meta.env.DEV,
+    allowLocalhostAsSecureOrigin: env.DEV,
   });
 }
 

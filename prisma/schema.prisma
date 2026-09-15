@@ -1,0 +1,626 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ════════════════════════════════════════════════════════════
+// BETTER AUTH TABLES
+// ════════════════════════════════════════════════════════════
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // ── Profil étendu (anciens champs users) ──
+  phone         String?   @default("")
+  city          String?   @default("")
+  quarter       String?   @default("")
+  referredBy    String?   @default("") @map("referred_by")
+  referralCode  String?   @unique @map("referral_code")
+  points        Int       @default(0)
+  pointsEarned  Int       @default(0) @map("points_earned")
+  plan          String?   @default("free")
+  role          String?   @default("user")
+  blocked       Boolean   @default(false)
+  banned        Boolean   @default(false)
+  banReason     String?   @map("ban_reason")
+  banExpires    DateTime? @map("ban_expires")
+
+  // ── Relations ──
+  declarations            Declaration[]
+  claims                  Claim[]
+  notifications           Notification[]
+  reports                 Report[]
+  pointsLedgers           PointsLedger[]
+  payments                Payment[]
+  donations               Donation[]
+  donationUser            Donation[]       @relation("DonationUser")
+  proAccounts             ProAccount[]
+  proAccountsByOwner      ProAccount[]     @relation("ProAccountOwner")
+  subscriptions           Subscription[]
+  pointPurchases          PointPurchase[]
+  giftOrders              GiftOrder[]
+  withdrawals             Withdrawal[]
+  adEvents                AdEvent[]
+  sessions                Session[]
+  accounts                Account[]
+  pvs                     Pv[]
+  pvsGeneratedBy          Pv[]             @relation("PvGeneratedBy")
+  appInstallations        AppInstallation[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  impersonatedBy String? @map("impersonated_by")
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String   @id
+  accountId             String   @map("account_id")
+  providerId            String   @map("provider_id")
+  userId                String   @map("user_id")
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?  @map("access_token")
+  refreshToken          String?  @map("refresh_token")
+  idToken               String?  @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("verification")
+}
+
+// ════════════════════════════════════════════════════════════
+// APP TABLES
+// ════════════════════════════════════════════════════════════
+
+model Category {
+  id        String   @id
+  slug      String   @unique
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("categories")
+}
+
+model Declaration {
+  id         String   @id @default(uuid())
+  kind       String
+  category   String
+  title      String
+  personName String?  @default("") @map("person_name")
+  brand      String?  @default("")
+  color      String?  @default("")
+  city       String?  @default("")
+  zone       String?  @default("")
+  eventDate  DateTime? @map("event_date") @db.Date
+  description  String?  @default("")
+  docLast4     String?  @default("") @map("doc_last4")
+  docNumber    String?  @default("") @map("doc_number")
+  photoUrl     String?  @default("") @map("photo_url")
+  phone        String?  @default("")
+  securityQuestion String? @default("") @map("security_question")
+  securityAnswer   String? @default("") @map("security_answer")
+  status     String?  @default("open")
+  priority   Boolean  @default(false)
+  priorityUntil DateTime? @map("priority_until")
+  ownerId    String?  @map("owner")
+  pvId       String?  @map("pv_id")
+  matchedDeclarationId String? @map("matched_declaration")
+  isDocumentPhoto Boolean? @default(false) @map("is_document_photo")
+  docPhotoType    String?  @default("") @map("doc_photo_type")
+  personAge       String?  @map("person_age")
+  personSex       String?  @map("person_sex")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // ── Relations ──
+  owner               User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  pv                  Pv?          @relation("DeclarationPv", fields: [pvId], references: [id], onDelete: SetNull)
+  matchedDeclaration  Declaration? @relation("DeclarationMatch", fields: [matchedDeclarationId], references: [id], onDelete: SetNull)
+  matchedBy           Declaration[] @relation("DeclarationMatch")
+
+  lostMatches         Match[]      @relation("MatchLost")
+  foundMatches        Match[]      @relation("MatchFound")
+  claims              Claim[]
+  reports             Report[]
+  relatedPvs          Pv[]         @relation("DeclarationRelatedPv")
+  relatedPvsByDecl    Pv[]         @relation("PvDeclaration")
+
+  @@index([kind])
+  @@index([status])
+  @@index([category])
+  @@index([ownerId])
+  @@index([city])
+  @@index([priority(sort: Desc), createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("declarations")
+}
+
+model Match {
+  id         String   @id @default(uuid())
+  lostId     String   @map("lost")
+  foundId    String   @map("found")
+  score      Int      @default(0)
+  breakdown  Json?    @default("{}")
+  status     String?  @default("suggested")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  lost       Declaration @relation("MatchLost", fields: [lostId], references: [id], onDelete: Cascade)
+  found      Declaration @relation("MatchFound", fields: [foundId], references: [id], onDelete: Cascade)
+  claims     Claim[]
+
+  @@index([lostId])
+  @@index([foundId])
+  @@index([status])
+  @@index([score])
+  @@map("matches")
+}
+
+model Claim {
+  id             String   @id @default(uuid())
+  declarationId  String?  @map("declaration")
+  claimantId     String?  @map("claimant")
+  matchId        String?  @map("match_id")
+  status         String?  @default("pending")
+  securityAnswer String?  @default("") @map("security_answer")
+  message        String?  @default("")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  declaration Declaration? @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  claimant    User?         @relation(fields: [claimantId], references: [id], onDelete: SetNull)
+  match       Match?        @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  @@index([declarationId])
+  @@index([claimantId])
+  @@index([status])
+  @@map("claims")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user")
+  title     String
+  body      String?  @default("")
+  link      String?  @default("/tableau-de-bord")
+  read      Boolean? @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model Report {
+  id            String   @id @default(uuid())
+  declarationId String?  @map("declaration")
+  reporterId    String?  @map("reporter")
+  reason        String?  @default("")
+  status        String?  @default("pending")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  declaration Declaration? @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  reporter    User?         @relation(fields: [reporterId], references: [id], onDelete: SetNull)
+
+  @@index([declarationId])
+  @@index([status])
+  @@map("reports")
+}
+
+model PointsLedger {
+  id          String   @id @default(uuid())
+  userId      String   @map("user")
+  amount      Int
+  reason      String?  @default("")
+  referenceId String?  @map("reference_id")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([reason])
+  @@index([createdAt])
+  @@map("points_ledger")
+}
+
+model Payment {
+  id                    String    @id @default(uuid())
+  userId                String?   @map("user")
+  type                  String?   @default("donation")
+  itemKey               String?   @map("item_key")
+  itemLabel             String?   @map("item_label")
+  amount                Int       @default(0)
+  amountFcfa            Int?      @map("amount_fcfa")
+  feeFcfa               Int?      @default(0) @map("fee_fcfa")
+  totalCharged          Int?      @map("total_charged")
+  currency              String?   @default("FCFA")
+  method                String?
+  paymentMethod         String?   @map("payment_method")
+  status                String?   @default("pending")
+  description           String?
+  moneyfusionToken      String?   @unique @map("moneyfusion_token")
+  moneyfusionMoyen      String?   @map("moneyfusion_moyen")
+  moneyfusionTransaction String?  @map("moneyfusion_transaction")
+  moneyfusionFrais      Int?      @map("moneyfusion_frais")
+  moneyfusionPersonalInfo Json?   @map("moneyfusion_personal_info")
+  confirmedAt           DateTime? @map("confirmed_at")
+  proofUrl              String?   @default("") @map("proof_url")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([moneyfusionToken])
+  @@map("payments")
+}
+
+model Donation {
+  id            String   @id @default(uuid())
+  userId        String?  @map("user")
+  usr           String?  @map("usr")
+  donorName     String?  @default("") @map("donor_name")
+  donorPhone    String?  @default("") @map("donor_phone")
+  amountFcfa    Int      @default(0) @map("amount_fcfa")
+  amount        Int      @default(0)
+  message       String?  @default("")
+  paymentMethod String?  @default("") @map("payment_method")
+  status        String?  @default("pending")
+  anonymous     Boolean? @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  usrUser User? @relation("DonationUser", fields: [usr], references: [id], onDelete: SetNull)
+
+  @@map("donations")
+}
+
+model DonationTotal {
+  id         String    @id @default("global")
+  label      String?   @default("global")
+  total      Int?      @default(0)
+  totalFcfa  Int?      @default(0) @map("total_fcfa")
+  count      Int?      @default(0)
+  donors     Int?      @default(0)
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@map("donation_totals")
+}
+
+model ProAccount {
+  id              String   @id @default(uuid())
+  userId          String?  @map("user")
+  ownerId         String?  @map("owner")
+  businessName    String   @map("business_name")
+  businessType    String?  @default("") @map("business_type")
+  orgType         String?  @map("org_type")
+  orgName         String?  @map("org_name")
+  orgDescription  String?  @map("org_description")
+  maxUsers        Int?     @default(5) @map("max_users")
+  contactEmail    String?  @map("contact_email")
+  contactPhone    String?  @map("contact_phone")
+  phone           String?  @default("")
+  email           String?  @default("")
+  status          String?  @default("pending")
+  plan            String?  @default("basic")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  owner User? @relation("ProAccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("pro_accounts")
+}
+
+model Subscription {
+  id         String    @id @default(uuid())
+  userId     String?   @map("user")
+  plan       String    @default("free")
+  status     String?   @default("active")
+  expiresAt  DateTime? @map("expires_at")
+  renewsAt   DateTime? @map("renews_at")
+  autoRenew  Boolean?  @default(false) @map("auto_renew")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model PointPurchase {
+  id         String    @id @default(uuid())
+  userId     String?   @map("user")
+  serviceKey String?   @default("") @map("service_key")
+  service    String?
+  pointsCost Int?      @map("points_cost")
+  fcfaCost   Int?      @map("fcfa_cost")
+  cost       Int?
+  duration   Int?      @default(30)
+  expiresAt  DateTime? @map("expires_at")
+  status     String?   @default("active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("point_purchases")
+}
+
+model GiftOrder {
+  id           String   @id @default(uuid())
+  userId       String?  @map("user")
+  giftKey      String   @map("gift_key")
+  giftType     String?  @map("gift_type")
+  cost         Int
+  pointsCost   Int?     @map("points_cost")
+  status       String?  @default("pending")
+  deliveryInfo Json?    @map("delivery_info")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("gift_orders")
+}
+
+model Withdrawal {
+  id                String    @id @default(uuid())
+  userId            String?   @map("user")
+  amountPoints      Int       @default(0) @map("amount_points")
+  amountFcfa        Int       @default(0) @map("amount_fcfa")
+  commissionFcfa    Int?      @default(0) @map("commission_fcfa")
+  netAmount         Int?      @map("net_amount")
+  method            String?
+  paymentMethod     String?   @map("payment_method")
+  phone             String?
+  paymentDetails    Json?     @map("payment_details")
+  status            String?   @default("pending")
+  moneyfusionToken  String?   @map("moneyfusion_token")
+  moneyfusionMoyen  String?   @map("moneyfusion_moyen")
+  paidAt            DateTime? @map("paid_at")
+  rejectionReason   String?   @map("rejection_reason")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("withdrawals")
+}
+
+model AdEvent {
+  id        String   @id @default(uuid())
+  placement String
+  userId    String?  @map("user")
+  action    String?  @default("view")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([placement])
+  @@index([userId])
+  @@map("ad_events")
+}
+
+model BrandingSetting {
+  id               String   @id @default("default")
+  appName          String?  @default("RetrouveMoi") @map("app_name")
+  tagline          String?
+  colorRed         String?  @default("#DC2626") @map("color_red")
+  colorGreen       String?  @default("#16A34A") @map("color_green")
+  colorYellow      String?  @default("#EAB308") @map("color_yellow")
+  colorBlue        String?  @default("#001F3F") @map("color_blue")
+  colorWhite       String?  @default("#FFFFFF") @map("color_white")
+  colorGrayLight   String?  @default("#F5F5F5") @map("color_gray_light")
+  colorGrayDark    String?  @default("#333333") @map("color_gray_dark")
+  address          String?  @default("Locaux RetrouveMoi")
+  phone            String?  @default("")
+  email            String?  @default("contact@retrouvezmoi.app")
+  hours            String?  @default("Lun – Sam, 8h – 18h")
+  socialFacebook   String?  @default("") @map("social_facebook")
+  socialTwitter    String?  @default("") @map("social_twitter")
+  socialInstagram  String?  @default("") @map("social_instagram")
+  socialWhatsapp   String?  @default("") @map("social_whatsapp")
+  currency         String?  @default("FCFA")
+  language         String?  @default("fr")
+  logoUrl          String?  @default("") @map("logo_url")
+  logoFile         String?  @default("") @map("logo_file")
+  heroImageUrl     String?  @default("") @map("hero_image_url")
+  heroFile         String?  @default("") @map("hero_file")
+  heroLink         String?  @default("") @map("hero_link")
+  sponsorName      String?  @default("") @map("sponsor_name")
+  sponsorUrl       String?  @default("") @map("sponsor_url")
+  sponsorTagline   String?  @default("") @map("sponsor_tagline")
+  sponsorLogoFile  String?  @default("") @map("sponsor_logo_file")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("branding_settings")
+}
+
+model Pv {
+  id                   String    @id @default(uuid())
+  pvNumber             String?   @unique @map("pv_number")
+  type                 String?   @default("deposit")
+  userId               String?   @map("user")
+  generatedById        String?   @map("generated_by")
+  relatedDeclarationId String?   @map("related_declaration")
+  declarationId        String?   @map("declaration_id")
+  signatoryName        String?   @default("") @map("signatory_name")
+  signatoryPhone       String?   @default("") @map("signatory_phone")
+  signatoryIdType      String?   @default("") @map("signatory_id_type")
+  signatoryIdNumber    String?   @default("") @map("signatory_id_number")
+  objectCategory       String?   @default("") @map("object_category")
+  objectDescription    String?   @default("") @map("object_description")
+  location             String?   @default("Locaux RetrouveMoi")
+  data                 Json?     @default("{}")
+  status               String?   @default("active")
+  qrCode               String?   @default("") @map("qr_code")
+  signatureUrl         String?   @default("") @map("signature_url")
+  title                String?   @default("")
+  description          String?   @default("")
+  city                 String?   @default("")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  user               User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  generatedBy        User?        @relation("PvGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
+  relatedDeclaration Declaration? @relation("DeclarationRelatedPv", fields: [relatedDeclarationId], references: [id], onDelete: SetNull)
+  declaration        Declaration? @relation("PvDeclaration", fields: [declarationId], references: [id], onDelete: SetNull)
+  signatures         Signature[]
+  declarationsWithPv Declaration[] @relation("DeclarationPv")
+
+  @@index([userId])
+  @@index([type])
+  @@map("pvs")
+}
+
+model Signature {
+  id             String   @id @default(uuid())
+  pvId           String   @map("pv_id")
+  signerName     String   @map("signer_name")
+  signatureData  String   @map("signature_data")
+  signedAt       DateTime @default(now()) @map("signed_at")
+
+  pv Pv @relation(fields: [pvId], references: [id], onDelete: Cascade)
+
+  @@map("signatures")
+}
+
+model AppInstallation {
+  id          String    @id @default(uuid())
+  userId      String?   @map("user")
+  userAgent   String?   @map("user_agent")
+  platform    String?
+  installedAt DateTime  @default(now()) @map("installed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([platform])
+  @@map("app_installations")
+}
+
+model EmailQueue {
+  id        String    @id @default(uuid())
+  toEmail   String    @map("to_email")
+  subject   String
+  body      String
+  status    String?   @default("pending")
+  tries     Int?      @default(0)
+  lastError String?   @default("") @map("last_error")
+  createdAt DateTime  @default(now()) @map("created_at")
+  sentAt    DateTime? @map("sent_at")
+
+  @@map("email_queue")
+}
+
+model HeroImage {
+  id        String   @id @default(uuid())
+  title     String?  @default("")
+  subtitle  String?  @default("")
+  imageUrl  String?  @default("") @map("image_url")
+  fileName  String?  @default("") @map("file_name")
+  linkUrl   String?  @default("") @map("link_url")
+  position  Int?     @default(0)
+  active    Boolean? @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([active])
+  @@index([position])
+  @@map("hero_images")
+}
+
+model SponsorBanner {
+  id          String   @id @default(uuid())
+  title       String   @default("")
+  subtitle    String?  @default("")
+  imageUrl    String?  @default("") @map("image_url")
+  logoFile    String?  @default("") @map("logo_file")
+  linkUrl     String?  @default("") @map("link_url")
+  ctaText     String?  @default("En savoir plus") @map("cta_text")
+  bgFrom      String?  @default("#001F3F") @map("bg_from")
+  bgTo        String?  @default("#1B4332") @map("bg_to")
+  accentColor String?  @default("#FFD60A") @map("accent_color")
+  position    Int?     @default(0)
+  active      Boolean? @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([active])
+  @@index([position])
+  @@map("sponsor_banners")
+}
+
+model SupportMessage {
+  id         String    @id @default(uuid())
+  name       String
+  email      String
+  phone      String?
+  subject    String?   @default("compte_supprime")
+  message    String
+  status     String?   @default("new")
+  adminReply String?   @map("admin_reply")
+  repliedAt  DateTime? @map("replied_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("support_messages")
+}
+
+model FcfaService {
+  key          String    @id
+  name         String
+  category     String?
+  pointsCost   Int?      @default(0) @map("points_cost")
+  fcfaCost     Int?      @default(0) @map("fcfa_cost")
+  durationDays Int?      @default(30) @map("duration_days")
+  description  String?
+  active       Boolean?  @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("fcfa_services")
+}

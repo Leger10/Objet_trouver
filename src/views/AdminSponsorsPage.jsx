@@ -11,7 +11,8 @@ const card = "rounded-2xl border border-border bg-card p-5";
 const field =
   "w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary";
 const label = "block text-sm font-semibold mb-1.5";
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+import env from '@/lib/env';
+const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
 const EMPTY_BANNER = {
   title: "",

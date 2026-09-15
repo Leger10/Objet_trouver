@@ -5,8 +5,10 @@ import { pb } from "@/lib/supabaseClient";
 // n'autorise pas les requêtes navigateur (CORS).
 const PAYIN_API_URL = "/api/create-payment";
 const VERIFY_URL = "/api/verify-payment";
-const RETURN_URL = "https://retrouvemoi.netlify.app/success";
-const WEBHOOK_URL = "https://retrouvemoi.netlify.app/api/webhook";
+const appOrigin = () =>
+  typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+const RETURN_URL = `${appOrigin()}/success`;
+const WEBHOOK_URL = `${appOrigin()}/api/webhook`;
 
 // 3% deposit fee on all incoming payments
 export const DEPOSIT_FEE_RATE = 0.03;
@@ -249,7 +251,7 @@ export const initiateWithdrawal = async ({
       amount,
       withdraw_mode: withdrawMode,
       webhook_url:
-        webhookUrl || "https://retrouvemoi.netlify.app/api/withdraw-hook",
+        webhookUrl || `${appOrigin()}/api/withdraw-hook`,
     }),
   });
 

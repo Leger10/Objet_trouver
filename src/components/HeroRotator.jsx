@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { pb } from "@/lib/supabaseClient";
 import { DEFAULT_HERO } from "@/lib/brandingDefaults";
+import env from "@/lib/env";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
 const resolveHeroImage = (h) => {
   if (h.file_name) {
