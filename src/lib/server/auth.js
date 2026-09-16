@@ -39,6 +39,7 @@ export const auth = betterAuth({
     process.env.NEXT_PUBLIC_SITE_URL,
     'https://retrouvemoi.netlify.app',
     'https://objettrouver.netlify.app',
+    'https://*.trycloudflare.com',
     'http://localhost:3000',
     'http://localhost:3001',
   ].filter(Boolean),
