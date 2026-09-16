@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@/lib/server/auth';
 import { prisma } from '@/lib/server/db';
 import {
   modelForCollection,
@@ -12,6 +13,8 @@ import {
 } from '@/lib/server/pb-helpers';
 import { uploadFile, FOLDERS } from '@/lib/server/cloudinary';
 
+const ADMIN_EMAIL = 'digihouse10@gmail.com';
+
 function errorResponse(status, message) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
@@ -20,6 +23,7 @@ function parseFormData(form) {
   const data = {};
   const files = [];
   for (const [key, value] of form.entries()) {
+    if (key === 'action' || key === 'collection' || key === 'id') continue;
     if (value instanceof File && value.size > 0) {
       files.push({ field: key, file: value });
     } else if (value !== undefined && value !== null) {
@@ -56,6 +60,29 @@ export async function POST(request) {
   const args = isMultipart
     ? Object.fromEntries([...form.entries()].filter(([k]) => k !== 'action' && k !== 'collection'))
     : body;
+
+  const session = await auth.api.getSession({ headers: request.headers });
+  const caller = session?.user || null;
+
+  // Sécurité : toute écriture sur users doit être authentifiée,
+  // et seule digihouse10@gmail.com peut modifier le rôle de quelqu'un.
+  if (collection === 'users' && (action === 'create' || action === 'update' || action === 'delete')) {
+    if (!caller) return errorResponse(401, 'Non connecté');
+    const changesRole = isMultipart
+      ? form.get('role') !== null
+      : (args.data && 'role' in args.data);
+    if (changesRole) {
+      if (caller.email !== ADMIN_EMAIL) {
+        return errorResponse(403, "Seul l'administrateur principal peut gérer les rôles");
+      }
+      if (action === 'update' && args.id) {
+        const targetUser = await prisma.user.findUnique({ where: { id: args.id } });
+        if (targetUser?.email === ADMIN_EMAIL) {
+          return errorResponse(403, "Impossible de modifier l'administrateur principal");
+        }
+      }
+    }
+  }
 
   try {
     if (action === 'getList') {
