@@ -113,23 +113,17 @@ const AdminHeroPage = () => {
       toast.error("Image trop volumineuse (max 5 Mo)");
       return;
     }
-
-    const itemId = h.id;
-    const isExisting = itemId && !String(itemId).startsWith("new-");
-    if (isExisting) {
-      try {
-        const url = await uploadNow(f, itemId);
-        setItem(idx, "file_name", url);
-        setItem(idx, "_mediaPreview", url);
-        toast.success("Image uploadée");
-      } catch (err) {
-        toast.error("Upload échoué", { description: err?.message });
-      }
-    } else {
-      setItem(idx, "_file", f);
-      setItem(idx, "file_name", h.file_name || f.name);
-      setItem(idx, "_mediaPreview", URL.createObjectURL(f));
-      toast.message("Image prête — enregistrez pour confirmer");
+    setItem(idx, "_uploading", true);
+    try {
+      const url = await uploadNow(f, h.id);
+      setItem(idx, "file_name", url);
+      setItem(idx, "image_url", url);
+      setItem(idx, "_mediaPreview", url);
+      toast.success("Image uploadée");
+    } catch (err) {
+      toast.error("Upload image échoué", { description: err?.message });
+    } finally {
+      setItem(idx, "_uploading", false);
     }
   };
 
@@ -141,27 +135,20 @@ const AdminHeroPage = () => {
       toast.error("Fichier vidéo requis (MP4, WEBM)");
       return;
     }
-    if (f.size > 30 * 1024 * 1024) {
-      toast.error("Vidéo trop volumineuse (max 30 Mo)");
+    if (f.size > 25 * 1024 * 1024) {
+      toast.error("Vidéo trop volumineuse (max 25 Mo). Pour une vidéo plus longue, utilisez le champ « URL de la vidéo ».");
       return;
     }
-
-    const itemId = h.id;
-    const isExisting = itemId && !String(itemId).startsWith("new-");
-    if (isExisting) {
-      try {
-        const url = await uploadNow(f, itemId);
-        setItem(idx, "video_url", url);
-        setItem(idx, "_mediaPreview", url);
-        toast.success("Vidéo uploadée");
-      } catch (err) {
-        toast.error("Upload échoué", { description: err?.message });
-      }
-    } else {
-      setItem(idx, "_videoFile", f);
-      setItem(idx, "video_url", h.video_url || f.name);
-      setItem(idx, "_mediaPreview", URL.createObjectURL(f));
-      toast.message("Vidéo prête — enregistrez pour confirmer");
+    setItem(idx, "_uploading", true);
+    try {
+      const url = await uploadNow(f, h.id);
+      setItem(idx, "video_url", url);
+      setItem(idx, "_mediaPreview", url);
+      toast.success("Vidéo uploadée");
+    } catch (err) {
+      toast.error("Upload vidéo échoué", { description: err?.message });
+    } finally {
+      setItem(idx, "_uploading", false);
     }
   };
 
@@ -188,18 +175,6 @@ const AdminHeroPage = () => {
           itemToSave = await pb.collection("hero_images").update(h.id, payload);
         } else {
           itemToSave = await pb.collection("hero_images").create(payload);
-        }
-
-        const pendingFile = isVideo ? h._videoFile : h._file;
-        if (pendingFile && itemToSave?.id) {
-          try {
-            const url = await uploadNow(pendingFile, itemToSave.id);
-            await pb.collection("hero_images").update(itemToSave.id, {
-              [isVideo ? "video_url" : "file_name"]: url,
-            });
-          } catch (err) {
-            console.warn("Upload failed:", err);
-          }
         }
       }
 
@@ -371,10 +346,11 @@ const AdminHeroPage = () => {
                             <input
                               type="file"
                               accept="video/*"
+                              disabled={h._uploading}
                               onChange={(e) => onVideoPick(idx, e)}
-                              className="block w-full text-sm"
+                              className="block w-full text-sm disabled:opacity-50"
                             />
-                            <p className="mt-1 text-[10px] text-muted-foreground">MP4, WebM — max 30 Mo. Elle se lira en boucle, sans son.</p>
+                            <p className="mt-1 text-[10px] text-muted-foreground">MP4, WebM — max 25 Mo. Elle se lira en boucle, sans son.</p>
                           </div>
                         </>
                       )}
@@ -386,6 +362,13 @@ const AdminHeroPage = () => {
 
                     {preview && (
                       <div className="mt-3 relative h-40 overflow-hidden rounded-xl bg-muted">
+                        {h._uploading && (
+                          <div className="absolute inset-0 z-10 grid place-items-center bg-black/40">
+                            <span className="flex items-center gap-2 text-xs font-bold text-white">
+                              <Loader2 className="h-4 w-4 animate-spin" /> Upload en cours…
+                            </span>
+                          </div>
+                        )}
                         {preview.type === "video" ? (
                           <video src={preview.src} muted loop playsInline className="h-full w-full object-cover" />
                         ) : (

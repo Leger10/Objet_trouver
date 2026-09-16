@@ -74,7 +74,7 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
           .getFullList({ sort: "position", filter: "active = true" });
         if (!alive || !data || data.length === 0) return;
 
-        // Ne garder que les médias réellement lisibles (image) ou vidéo
+        // Ne garder que les médias réellement lisibles (image valide) ou vidéo
         const ok = [];
         for (const h of data.slice(0, 6)) {
           const media = resolveHeroMedia(h);
@@ -83,7 +83,11 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
             ok.push(h);
             continue;
           }
-          const loaded = await preloadImage(media.src);
+          const hasRealImage =
+            (h.file_name && /^https?:\/\//i.test(h.file_name)) ||
+            (h.image_url && /^https?:\/\//i.test(h.image_url));
+          if (!hasRealImage) continue;
+          const loaded = await preloadImage(resolveHeroImage(h));
           if (loaded) {
             readyRef.current.add(h.id);
             ok.push(h);
@@ -147,29 +151,38 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
               exit: anim.exit,
               transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
             };
-            if (media.type === "video") {
-              return (
-                <motion.video
-                  key={currentImage.id}
-                  src={media.src}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="absolute inset-0 h-full w-full object-cover"
-                  {...transitions}
-                />
-              );
-            }
+            // Rester animé en continu (zoom lent) même avec une seule slide
+            const sway = {
+              initial: { scale: 1 },
+              animate: { scale: [1.03, 1.09, 1.03] },
+              transition: { duration: 12, ease: "easeInOut", repeat: Infinity },
+            };
             return (
-              <motion.img
+              <motion.div
                 key={currentImage.id}
-                src={media.src}
-                alt={currentImage.title || ""}
-                className="absolute inset-0 h-full w-full object-cover"
-                {...transitions}
-                decoding="async"
-              />
+                className="absolute inset-0 overflow-hidden"
+                {...sway}
+              >
+                {media.type === "video" ? (
+                  <motion.video
+                    src={media.src}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="h-full w-full object-cover"
+                    {...transitions}
+                  />
+                ) : (
+                  <motion.img
+                    src={media.src}
+                    alt={currentImage.title || ""}
+                    className="h-full w-full object-cover"
+                    {...transitions}
+                    decoding="async"
+                  />
+                )}
+              </motion.div>
             );
           })()}
         </AnimatePresence>
