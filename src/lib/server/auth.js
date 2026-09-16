@@ -34,6 +34,22 @@ export const auth = betterAuth({
     }),
     nextCookies(),
   ],
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          if (!user.referralCode) {
+            return {
+              data: {
+                ...user,
+                referralCode: 'OBJ-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+              },
+            };
+          }
+        },
+      },
+    },
+  },
   trustedOrigins: [
     process.env.BETTER_AUTH_URL,
     process.env.NEXT_PUBLIC_SITE_URL,

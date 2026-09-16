@@ -70,14 +70,19 @@ export const AuthProvider = ({ children }) => {
     try {
       const row = await ensureUserRow(authUser);
       const merged = row ? { ...authUser, ...row } : authUser;
-      setUser(merged);
+      const normalized = {
+        ...merged,
+        referral_code: merged.referral_code || merged.referralCode || '',
+      };
+      setUser(normalized);
       setIsAuthed(true);
-      return merged;
+      return normalized;
     } catch (e) {
       console.warn('buildUser ensureUserRow error:', e);
-      setUser(authUser);
+      const fallback = { ...authUser, referral_code: authUser.referralCode || '' };
+      setUser(fallback);
       setIsAuthed(true);
-      return authUser;
+      return fallback;
     }
   }, []);
 
