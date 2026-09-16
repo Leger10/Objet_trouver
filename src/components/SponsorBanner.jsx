@@ -2,13 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { pb } from "@/lib/supabaseClient";
-import env from "@/lib/env";
-
-const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
 const resolveLogo = (b) => {
-  if (b.logo_file) {
-    return `${SUPABASE_URL}/storage/v1/object/public/branding/sponsors/${b.id}/${b.logo_file}`;
+  if (b.logo_file && /^https?:\/\//i.test(b.logo_file)) {
+    return b.logo_file;
   }
   if (b.image_url) return b.image_url;
   return "";

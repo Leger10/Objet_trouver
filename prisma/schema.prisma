@@ -564,6 +564,7 @@ model HeroImage {
   subtitle  String?  @default("")
   imageUrl  String?  @default("") @map("image_url")
   fileName  String?  @default("") @map("file_name")
+  videoUrl  String?  @default("") @map("video_url")
   linkUrl   String?  @default("") @map("link_url")
   position  Int?     @default(0)
   active    Boolean? @default(true)

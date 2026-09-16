@@ -332,6 +332,18 @@ const AdminBrandingPage = () => {
                 Configurez l&apos;image de bannière de la page d&apos;accueil et les informations du sponsor/partenaire affiché.
               </p>
 
+              <Link
+                to="/admin/hero"
+                className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+              >
+                <span className="text-xs font-bold text-foreground">
+                  Bannière animée : vidéos & images en alternance
+                </span>
+                <span className="text-[10px] font-extrabold text-primary underline underline-offset-2">
+                  Gérer les médias →
+                </span>
+              </Link>
+
               <div className="grid gap-3">
                 <div>
                   <label className={label}>URL de l&apos;image hero</label>

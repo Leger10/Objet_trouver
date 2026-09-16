@@ -6,12 +6,22 @@ import env from "@/lib/env";
 
 const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
+const isVideoSrc = (h) => !!h.video_url && /^https?:\/\//i.test(h.video_url);
+
 const resolveHeroImage = (h) => {
+  if (h.file_name && /^https?:\/\//i.test(h.file_name)) {
+    return h.file_name;
+  }
   if (h.file_name) {
     return `${SUPABASE_URL}/storage/v1/object/public/branding/heroes/${h.id}/${h.file_name}`;
   }
   if (h.image_url) return h.image_url;
   return DEFAULT_HERO;
+};
+
+const resolveHeroMedia = (h) => {
+  if (isVideoSrc(h)) return { type: "video", src: h.video_url };
+  return { type: "image", src: resolveHeroImage(h) };
 };
 
 // Précharge une image ; résout vite même si elle met du temps
@@ -64,16 +74,21 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
           .getFullList({ sort: "position", filter: "active = true" });
         if (!alive || !data || data.length === 0) return;
 
-        // Ne garder que les images qui se chargent réellement
+        // Ne garder que les médias réellement lisibles (image) ou vidéo
         const ok = [];
         for (const h of data.slice(0, 6)) {
-          const src = resolveHeroImage(h);
-          const loaded = await preloadImage(src);
+          const media = resolveHeroMedia(h);
+          if (media.type === "video") {
+            readyRef.current.add(h.id);
+            ok.push(h);
+            continue;
+          }
+          const loaded = await preloadImage(media.src);
           if (loaded) {
             readyRef.current.add(h.id);
             ok.push(h);
           } else if (alive) {
-            console.warn("Image hero illisible, ignorée :", src);
+            console.warn("Image hero illisible, ignorée :", media.src);
           }
           if (!alive) return;
         }
@@ -124,19 +139,39 @@ const HeroRotator = ({ fallbackImage, children, className = "" }) => {
 
         {/* Slides empilées : pas de re-téléchargement au changement */}
         <AnimatePresence>
-          {currentImage && (
-            <motion.img
-              key={currentImage.id}
-              src={resolveHeroImage(currentImage)}
-              alt={currentImage.title || ""}
-              className="absolute inset-0 h-full w-full object-cover"
-              initial={anim.initial}
-              animate={anim.animate}
-              exit={anim.exit}
-              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              decoding="async"
-            />
-          )}
+          {currentImage && (() => {
+            const media = resolveHeroMedia(currentImage);
+            const transitions = {
+              initial: anim.initial,
+              animate: anim.animate,
+              exit: anim.exit,
+              transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
+            };
+            if (media.type === "video") {
+              return (
+                <motion.video
+                  key={currentImage.id}
+                  src={media.src}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="absolute inset-0 h-full w-full object-cover"
+                  {...transitions}
+                />
+              );
+            }
+            return (
+              <motion.img
+                key={currentImage.id}
+                src={media.src}
+                alt={currentImage.title || ""}
+                className="absolute inset-0 h-full w-full object-cover"
+                {...transitions}
+                decoding="async"
+              />
+            );
+          })()}
         </AnimatePresence>
 
         {/* Dots navigation */}

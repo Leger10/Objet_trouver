@@ -11,8 +11,6 @@ const card = "rounded-2xl border border-border bg-card p-5";
 const field =
   "w-full rounded-xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary";
 const label = "block text-sm font-semibold mb-1.5";
-import env from '@/lib/env';
-const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
 const EMPTY_BANNER = {
   title: "",
@@ -98,8 +96,12 @@ const AdminSponsorsPage = () => {
         const ext = f.name.split(".").pop() || "png";
         const fileName = `logo-${Date.now()}.${ext}`;
         const path = `sponsors/${bannerId}/${fileName}`;
-        await pb.files.upload("branding", path, f);
-        setBanner(idx, "logo_file", fileName);
+        const up = await pb.files.upload("branding", path, f).then(
+          (d) => ({ data: d, error: null }),
+          (e) => ({ data: null, error: e }),
+        );
+        if (up.error) throw up.error;
+        setBanner(idx, "logo_file", up.data.path);
         toast.success("Logo uploadé");
       } catch (err) {
         toast.error("Upload échoué", { description: err?.message });
@@ -114,9 +116,7 @@ const AdminSponsorsPage = () => {
   };
 
   const resolveLogo = (b) => {
-    if (b.logo_file && b.id && !String(b.id).startsWith("new-")) {
-      return `${SUPABASE_URL}/storage/v1/object/public/branding/sponsors/${b.id}/${b.logo_file}`;
-    }
+    if (b.logo_file && /^https?:\/\//i.test(b.logo_file)) return b.logo_file;
     if (b.image_url) return b.image_url;
     return "";
   };
@@ -152,8 +152,12 @@ const AdminSponsorsPage = () => {
             const ext = b._logoFile.name.split(".").pop() || "png";
             const fileName = `logo-${Date.now()}.${ext}`;
             const path = `sponsors/${saved.id}/${fileName}`;
-            await pb.files.upload("branding", path, b._logoFile);
-            await pb.collection("sponsor_banners").update(saved.id, { logo_file: fileName });
+            const up = await pb.files.upload("branding", path, b._logoFile).then(
+              (d) => ({ data: d, error: null }),
+              (e) => ({ data: null, error: e }),
+            );
+            if (up.error) throw up.error;
+            await pb.collection("sponsor_banners").update(saved.id, { logo_file: up.data.path });
           } catch (err) {
             console.warn("Logo upload failed:", err);
           }
