@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Lock, Loader2, Smartphone, User, Phone } from "lucide-react";
-import { initPayment, computeTotalWithFee, computeFee, savePaymentContext } from "@/lib/moneyfusion";
+import { initPayment, computeTotalWithFee, computeFee, savePaymentContext, linkPendingPaymentToken } from "@/lib/moneyfusion";
 import { formatNumber } from "@/lib/format";
 
 const field =
@@ -28,6 +28,7 @@ const PaymentMethodPicker = ({
   extraInfo = {},
   ctaLabel = "Payer",
   disabled = false,
+  nameRequired = true,
 }) => {
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
@@ -41,7 +42,7 @@ const PaymentMethodPicker = ({
       toast.error("Numéro de téléphone invalide (8 chiffres minimum).");
       return;
     }
-    if (!name.trim()) {
+    if (nameRequired && !name.trim()) {
       toast.error("Indiquez votre nom.");
       return;
     }
@@ -61,13 +62,14 @@ const PaymentMethodPicker = ({
         amount,
         items: items || [{ [type]: amount }],
         phone: phone.trim(),
-        name: name.trim(),
+        name: nameRequired ? name.trim() : "Anonyme",
         type,
         itemId,
         extraInfo,
       });
 
       if (result.url) {
+        await linkPendingPaymentToken(result.token);
         savePaymentContext({ token: result.token, type, itemKey: itemId });
         window.location.href = result.url;
       }
@@ -117,22 +119,24 @@ const PaymentMethodPicker = ({
         </div>
       </div>
 
-      {/* Name */}
-      <div className="mb-4">
-        <label className="text-xs font-bold text-muted-foreground">
-          Nom complet
-        </label>
-        <div className="relative mt-1.5">
-          <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Votre nom"
-            className={`${field} pl-10`}
-          />
+      {/* Name (requis sauf pour les dons anonymes) */}
+      {nameRequired && (
+        <div className="mb-4">
+          <label className="text-xs font-bold text-muted-foreground">
+            Nom complet
+          </label>
+          <div className="relative mt-1.5">
+            <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Votre nom"
+              className={`${field} pl-10`}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <p className="mb-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <Lock className="h-3.5 w-3.5" /> Paiement sécurisé via MoneyFusion

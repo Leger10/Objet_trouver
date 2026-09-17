@@ -206,6 +206,7 @@ const DonatePage = () => {
                 itemId: "",
                 items: [{ "Don RetrouvéMoi": finalAmount }],
                 ctaLabel: "Faire ce don",
+                nameRequired: identity !== "identified",
                 onBeforePay: async () => {
                   await createPendingPayment({
                     userId: donorId,

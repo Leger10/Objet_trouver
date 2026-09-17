@@ -86,29 +86,31 @@ const ProAccountsPage = () => {
     try {
       // Create the pro_account record (pending) if it doesn't exist
       if (!proAccount) {
-        const rec = await pb.collection("pro_accounts").create({
-          owner: user.id,
-          org_type: form.org_type,
-          org_name: form.org_name.trim(),
-          org_description: form.org_description.trim(),
-          plan: checkout.key,
-          max_users: checkout.maxUsers,
-          contact_email: form.contact_email.trim(),
-          contact_phone: form.contact_phone.trim(),
-          status: "pending",
-        });
-        setProAccount(rec);
-      } else {
-        await pb.collection("pro_accounts").update(proAccount.id, {
-          plan: checkout.key,
-          max_users: checkout.maxUsers,
-          org_type: form.org_type,
-          org_name: form.org_name.trim(),
-          org_description: form.org_description.trim(),
-          contact_email: form.contact_email.trim(),
-          contact_phone: form.contact_phone.trim(),
-        });
-      }
+const rec = await pb.collection("pro_accounts").create({
+                      owner: user.id,
+                      business_name: form.org_name.trim(),
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                      status: "pending",
+                    });
+                    setProAccount(rec);
+                  } else {
+                    await pb.collection("pro_accounts").update(proAccount.id, {
+                      plan: checkout.key,
+                      max_users: checkout.maxUsers,
+                      business_name: form.org_name.trim(),
+                      org_type: form.org_type,
+                      org_name: form.org_name.trim(),
+                      org_description: form.org_description.trim(),
+                      contact_email: form.contact_email.trim(),
+                      contact_phone: form.contact_phone.trim(),
+                    });
+                  }
       // Create payment record
       await createPendingPayment({
         userId: user.id,
@@ -449,6 +451,7 @@ const ProAccountsPage = () => {
                   if (!proAccount) {
                     const rec = await pb.collection("pro_accounts").create({
                       owner: user.id,
+                      business_name: form.org_name.trim(),
                       org_type: form.org_type,
                       org_name: form.org_name.trim(),
                       org_description: form.org_description.trim(),
@@ -463,6 +466,7 @@ const ProAccountsPage = () => {
                     await pb.collection("pro_accounts").update(proAccount.id, {
                       plan: checkout.key,
                       max_users: checkout.maxUsers,
+                      business_name: form.org_name.trim(),
                       org_type: form.org_type,
                       org_name: form.org_name.trim(),
                       org_description: form.org_description.trim(),

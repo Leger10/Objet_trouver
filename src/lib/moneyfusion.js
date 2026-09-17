@@ -131,11 +131,34 @@ export const createPendingPayment = async ({
     status: "pending",
     payment_method: method,
     description,
-    moneyfusion_token: moneyfusionToken,
   };
+  // Le token MoneyFusion n'est connu qu'après initPayment : on ne l'écrit que
+  // s'il existe (la colonne est UNIQUE — un "" écrasé ferait échouer la 2e insertion).
+  if (moneyfusionToken) data.moneyfusion_token = moneyfusionToken;
   // proof_url n'est envoyé que s'il existe (colonne peut manquer en base)
   if (proofUrl) data.proof_url = proofUrl;
-  return pb.collection("payments").create(data);
+  const rec = await pb.collection("payments").create(data);
+  // Mémorise l'id pour pouvoir rattacher le vrai token après initPayment
+  try {
+    sessionStorage.setItem("mf_pending_payment_id", rec.id);
+  } catch {}
+  return rec;
+};
+
+// ── Rattache le vrai token MoneyFusion à la dernière commande pending ──────
+export const linkPendingPaymentToken = async (token) => {
+  if (!token) return;
+  let id = null;
+  try {
+    id = sessionStorage.getItem("mf_pending_payment_id");
+  } catch {}
+  if (!id) return;
+  try {
+    await pb.collection("payments").update(id, { moneyfusion_token: token });
+  } catch (_) {}
+  try {
+    sessionStorage.removeItem("mf_pending_payment_id");
+  } catch {}
 };
 
 // ── Solde HTML <input> helper ───────────────────────────────────────────────
