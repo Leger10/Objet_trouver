@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Trophy } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import AdSlot from "@/components/AdSlot";
 import { REWARDS } from "@/lib/retrouve";

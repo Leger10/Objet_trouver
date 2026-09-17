@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import AdSlot from "@/components/AdSlot";
 import { useAuth } from "@/contexts/AuthContext";

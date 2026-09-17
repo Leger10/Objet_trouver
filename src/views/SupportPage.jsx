@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, Send, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import BrandLogo from '@/components/BrandLogo';
-import { supabase } from '@/lib/supabaseClient';
+import { pb } from '@/lib/pbClient';
 import { useBranding } from '@/contexts/BrandingContext';
 
 const field = 'w-full rounded-xl border border-input bg-background px-4 py-3 text-base outline-none focus:border-primary focus:ring-2 focus:ring-ring/30';
@@ -49,7 +49,7 @@ const SupportPage = () => {
 
         setBusy(true);
         try {
-            const { error: insertErr } = await supabase.from('support_messages').insert({
+            const { error: insertErr } = await pb.from('support_messages').insert({
                 name: form.name.trim(),
                 email: form.email.trim(),
                 phone: form.phone.trim(),

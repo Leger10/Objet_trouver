@@ -1,4 +1,4 @@
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 
 // Métadonnées par slug de catégorie : icône, libellé court, groupe
 export const CATEGORY_META = {

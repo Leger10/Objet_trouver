@@ -1,4 +1,4 @@
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { BRANDING_DEFAULTS, LOGO_URL } from "@/lib/brandingDefaults";
 
 let cachedBranding = null;

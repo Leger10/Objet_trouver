@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Megaphone } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { useAuth } from "@/contexts/AuthContext";
 
 const logAdEvent = (type, placement) => {

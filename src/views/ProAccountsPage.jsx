@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Building2, CheckCircle2, Loader2, X } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import PaymentOptions from "@/components/PaymentOptions";

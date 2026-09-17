@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { CalendarDays, MapPin, Star, ChevronRight, Lock } from "lucide-react";
 import { motion } from "framer-motion";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { maskId } from "@/lib/retrouve";
 import { metaForSlug, isSensitiveCategory, canViewSensitiveDetails } from "@/lib/categories";
 import { useAuth } from "@/contexts/AuthContext";

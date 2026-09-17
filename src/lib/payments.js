@@ -1,4 +1,4 @@
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 
 // Mobile money accounts (same as donations)
 export const ORANGE_NUMBER = "46598281";

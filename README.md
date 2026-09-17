@@ -9,8 +9,8 @@ RetrouveMoi est une application web qui permet de déclarer des objets perdus ou
 ## 🚀 Technologies
 
 - **Frontend** : React 18, Tailwind CSS, Framer Motion
-- **Backend** : Supabase (PostgreSQL, Auth, Storage)
-- **Build** : Vite
+- **Backend** : Next.js API Routes, Better Auth, Prisma (MySQL), Cloudinary
+- **Build** : Next.js
 - **Hébergement** : Netlify
 
 ## ✨ Fonctionnalités

@@ -7,7 +7,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { BRANDING_DEFAULTS, DEFAULT_HERO, applyBrandingCss } from "@/lib/brandingDefaults";
 
 const BrandingContext = createContext(null);

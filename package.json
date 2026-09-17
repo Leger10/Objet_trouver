@@ -17,12 +17,10 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "node prisma/seed.mjs",
-    "db:export": "node scripts/export-supabase.mjs"
+    "db:seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "@supabase/supabase-js": "^2.39.0",
     "better-auth": "^1.7.5",
     "cloudinary": "^2.11.0",
     "framer-motion": "^11.15.0",

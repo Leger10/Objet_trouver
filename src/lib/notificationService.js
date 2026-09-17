@@ -1,5 +1,5 @@
 // Service de notifications : in-app + push (OneSignal)
-import { pb, supabase } from "./supabaseClient";
+import { pb } from "./pbClient";
 import env from "./env";
 
 // ─── HELPER: Get deposit PV info for a declaration ───
@@ -7,7 +7,7 @@ import env from "./env";
 export const getDepositPVInfo = async (declarationId) => {
   if (!declarationId) return null;
   try {
-    const { data: pv } = await supabase
+    const { data: pv } = await pb
       .from("pvs")
       .select("*")
       .eq("declaration_id", declarationId)
@@ -66,7 +66,7 @@ export const queueEmail = async () => {};
 // Notifier tous les users sauf l'expéditeur
 export const notifyAllUsers = async (senderId, title, body, link) => {
   try {
-    const { data: users } = await supabase
+    const { data: users } = await pb
       .from("users")
       .select("id")
       .neq("id", senderId);
@@ -109,8 +109,8 @@ export const initOneSignal = async () => {
     // Demander la permission
     await window.OneSignal.Slidedown.promptPush();
 
-    // Enregistrer l'user ID Supabase dans OneSignal
-    const { data: { session } } = await supabase.auth.getSession();
+    // Enregistrer l'user ID dans OneSignal
+    const { data: { session } } = await pb.auth.getSession();
     if (session?.user?.id) {
       await window.OneSignal.addExternalUserId(session.user.id);
     }
@@ -127,7 +127,7 @@ export const initOneSignal = async () => {
 export const findNearestAdmin = async (city = "", quarter = "") => {
   try {
     // Use SQL function via RPC — bypasses RLS (SECURITY DEFINER)
-    const { data, error } = await supabase.rpc("find_nearest_admin", {
+    const { data, error } = await pb.rpc("find_nearest_admin", {
       p_city: (city || "").trim(),
       p_quarter: (quarter || "").trim(),
     });

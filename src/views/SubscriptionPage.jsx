@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { CheckCircle2, Crown, Loader2, Sparkles, X, RefreshCw, AlertTriangle } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";

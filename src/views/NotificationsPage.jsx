@@ -10,7 +10,7 @@ import {
   Trash2,
   Inbox,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { usePaginate, ListFooter } from "@/components/PaginatedList";
 import { useAuth } from "@/contexts/AuthContext";

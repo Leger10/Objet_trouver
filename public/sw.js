@@ -26,7 +26,7 @@ self.addEventListener("fetch", (e) => {
   const { request } = e;
   if (request.method !== "GET") return;
 
-  // Laisser passer Supabase / CDN sans interception (évite les réponses opaques cassées)
+  // Laisser passer les CDN sans interception (évite les réponses opaques cassées)
   if (!request.url.startsWith(self.location.origin)) return;
 
   e.respondWith(

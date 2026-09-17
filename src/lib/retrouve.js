@@ -1,4 +1,4 @@
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { onMatchFound } from "@/lib/notificationService";
 
 export const maskId = (last4) => (last4 ? `********${last4}` : "Non renseigné");

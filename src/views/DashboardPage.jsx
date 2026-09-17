@@ -29,7 +29,7 @@ import {
   Star,
   Banknote,
 } from "lucide-react";
-import { pb, supabase } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import PullToRefresh from "@/components/PullToRefresh";
 import AdSlot from "@/components/AdSlot";
@@ -206,14 +206,14 @@ const DashboardPage = () => {
       let claimsInItems = [];
       if (declIds.length > 0) {
         try {
-          const { data } = await supabase
+          const { data } = await pb
             .from('claims')
             .select('*')
             .in('declaration', declIds)
             .order('created_at', { ascending: false });
           claimsInItems = data || [];
           if (claimsInItems.length > 0) {
-            const { data: decls } = await supabase
+            const { data: decls } = await pb
               .from('declarations')
               .select('*')
               .in('id', declIds);

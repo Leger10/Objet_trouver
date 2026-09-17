@@ -13,7 +13,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { pb, supabase } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -245,7 +245,7 @@ const RewardsPage = () => {
       const withdrawMode = getWithdrawMode(method);
 
       // Debit points via RPC (safe, atomic)
-      const { error: debitErr } = await supabase.rpc('debit_points_safe', {
+      const { error: debitErr } = await pb.rpc('debit_points_safe', {
         p_user: user.id,
         p_amount: pts,
         p_reason: 'withdrawal',

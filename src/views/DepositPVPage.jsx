@@ -9,7 +9,7 @@ import {
   ShieldAlert,
   Loader2,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import SearchableSelect from "@/components/SearchableSelect";
 import { useAuth } from "@/contexts/AuthContext";

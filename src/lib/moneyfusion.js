@@ -1,4 +1,4 @@
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 
 // ── MoneyFusion API Configuration ──────────────────────────────────────────
 // Les appels passent par les fonctions Netlify (proxy) : l'API MoneyFusion
@@ -158,11 +158,11 @@ export const submitUssdPayment = async ({
   let proofUrl = "";
   if (proofFile) {
     const fileName = `proofs/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extFromName(proofFile.name)}`;
-    const { data: uploaded } = await pb.supabase.storage
+    const { data: uploaded } = await pb.storage
       .from("uploads")
       .upload(fileName, proofFile, { cacheControl: "3600", upsert: false });
     if (uploaded) {
-      const { data: urlData } = pb.supabase.storage
+      const { data: urlData } = pb.storage
         .from("uploads")
         .getPublicUrl(uploaded.path);
       proofUrl = urlData?.publicUrl || "";

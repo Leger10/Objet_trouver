@@ -15,7 +15,7 @@ import {
   Loader2,
   ExternalLink,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useBranding } from "@/contexts/BrandingContext";
 import {

@@ -1,10 +1,9 @@
 'use client';
 
 import { createAuthClient } from 'better-auth/react';
-import env from './env';
 
 // ════════════════════════════════════════════════════════════
-// CLIENT PRINCIPAL — pont vers les API Routes Next.js
+// CLIENT UNIQUE — pont vers les API Routes Next.js
 // (Prisma + Better Auth + Cloudinary)
 // ════════════════════════════════════════════════════════════
 
@@ -56,9 +55,7 @@ function emitAuth(event, session) {
   });
 }
 
-// ════════════════════════════════════════════════════════════
-// SHIM SUPABASE (auth + from() + storage + rpc)
-// ════════════════════════════════════════════════════════════
+// ── Query builder (from().select().eq()…) → /api/pb ──
 
 class QueryBuilder {
   constructor(table) {
@@ -176,109 +173,7 @@ class QueryBuilder {
   }
 }
 
-export const supabase = {
-  auth: {
-    async getSession() {
-      const { data, error } = await authClient.getSession();
-      return { data: { session: data }, error };
-    },
-    async getUser() {
-      const { data, error } = await authClient.getUser();
-      return { data: { user: data?.user || null }, error };
-    },
-    async signInWithPassword({ email, password }) {
-      const { data, error } = await authClient.signIn.email({ email, password });
-      if (!error && data?.user) emitAuth('SIGNED_IN', data);
-      return {
-        data: data ? { user: data.user, session: data.session || null } : null,
-        error,
-      };
-    },
-    async signUp({ email, password, options = {} }) {
-      const extra = options?.data || {};
-      const { data, error } = await authClient.signUp.email({
-        email,
-        password,
-        name: extra.name || '',
-        phone: extra.phone || '',
-        city: extra.city || '',
-        quarter: extra.quarter || '',
-        referredBy: extra.referred_by || '',
-      });
-      if (!error && data?.user) emitAuth('SIGNED_IN', { user: data.user });
-      return {
-        data: data ? { user: data.user, session: data.session || null } : null,
-        error,
-      };
-    },
-    async signOut() {
-      const { error } = await authClient.signOut();
-      if (!error) emitAuth('SIGNED_OUT', null);
-      return { error };
-    },
-    async updateUser({ password }) {
-      const { data, error } = await authClient.resetPassword({ newPassword: password });
-      return { data, error };
-    },
-    async resetPasswordForEmail(email, { redirectTo } = {}) {
-      const { error } = await authClient.forgetPassword({ email, redirectTo });
-      return { error };
-    },
-    onAuthStateChange(cb) {
-      authListeners.add(cb);
-      return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } };
-    },
-  },
-
-  from(table) {
-    return new QueryBuilder(table);
-  },
-
-  rpc(name, params = {}) {
-    return apiJson('/api/rpc', { name, params });
-  },
-
-  storage: {
-    from(bucket) {
-      const folder = bucket === 'branding' ? '/branding' : '';
-      return {
-        upload: async (_path, file, _opts = {}) => {
-          try {
-            const fd = new FormData();
-            fd.append('file', file);
-            fd.append('folder', folder);
-            const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' });
-            const result = await res.json().catch(() => ({}));
-            if (!result.ok) return { data: null, error: new Error(result.error || 'Upload échoué') };
-            return { data: { path: result.url, publicId: result.publicId }, error: null };
-          } catch (e) {
-            return { data: null, error: e };
-          }
-        },
-        getPublicUrl: (path) => {
-          if (path && /^https?:\/\//.test(path)) return { data: { publicUrl: path }, error: null };
-          return { data: { publicUrl: path || '' }, error: null };
-        },
-        remove: async (paths = []) => {
-          for (const p of paths) {
-            try {
-              await fetch('/api/files/remove', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ publicId: p }),
-              });
-            } catch { /* best-effort */ }
-          }
-          return { error: null };
-        },
-      };
-    },
-  },
-};
-
-// ════════════════════════════════════════════════════════════
-// ADAPTATEUR POCKETBASE → API /api/pb
-// ════════════════════════════════════════════════════════════
+// ── Adaptateur collection → /api/pb ──
 
 class PbCollection {
   constructor(collectionName) {
@@ -334,7 +229,48 @@ class PbCollection {
   }
 }
 
-class PocketBaseCompatible {
+// ── Stockage médias → Cloudinary via /api/upload ──
+
+const storageShim = {
+  from(bucket) {
+    const folder = bucket === 'branding' ? '/branding' : '';
+    return {
+      upload: async (_path, file, _opts = {}) => {
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('folder', folder);
+          const res = await fetch('/api/upload', { method: 'POST', body: fd, credentials: 'include' });
+          const result = await res.json().catch(() => ({}));
+          if (!result.ok) return { data: null, error: new Error(result.error || 'Upload échoué') };
+          return { data: { path: result.url, publicId: result.publicId }, error: null };
+        } catch (e) {
+          return { data: null, error: e };
+        }
+      },
+      getPublicUrl: (path) => {
+        if (path && /^https?:\/\//.test(path)) return { data: { publicUrl: path }, error: null };
+        return { data: { publicUrl: path || '' }, error: null };
+      },
+      remove: async (paths = []) => {
+        for (const p of paths) {
+          try {
+            await fetch('/api/files/remove', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ publicId: p }),
+            });
+          } catch { /* best-effort */ }
+        }
+        return { error: null };
+      },
+    };
+  },
+};
+
+// ── Client public unifié ──
+
+class PbClient {
   constructor() {
     this.authStore = {
       record: null,
@@ -342,7 +278,65 @@ class PocketBaseCompatible {
       isAuth: false,
     };
     this.collections = {};
-    this.supabase = supabase;
+    this.auth = {
+      async getSession() {
+        const { data, error } = await authClient.getSession();
+        return { data: { session: data }, error };
+      },
+      async getUser() {
+        const { data, error } = await authClient.getUser();
+        return { data: { user: data?.user || null }, error };
+      },
+      async signInWithPassword({ email, password }) {
+        const { data, error } = await authClient.signIn.email({ email, password });
+        if (!error && data?.user) emitAuth('SIGNED_IN', data);
+        return {
+          data: data ? { user: data.user, session: data.session || null } : null,
+          error,
+        };
+      },
+      async signUp({ email, password, options = {} }) {
+        const extra = options?.data || {};
+        const { data, error } = await authClient.signUp.email({
+          email,
+          password,
+          name: extra.name || '',
+          phone: extra.phone || '',
+          city: extra.city || '',
+          quarter: extra.quarter || '',
+          referredBy: extra.referred_by || '',
+        });
+        if (!error && data?.user) emitAuth('SIGNED_IN', { user: data.user });
+        return {
+          data: data ? { user: data.user, session: data.session || null } : null,
+          error,
+        };
+      },
+      async signOut() {
+        const { error } = await authClient.signOut();
+        if (!error) emitAuth('SIGNED_OUT', null);
+        return { error };
+      },
+      async updateUser({ password }) {
+        const { data, error } = await authClient.resetPassword({ newPassword: password });
+        return { data, error };
+      },
+      async resetPasswordForEmail(email, { redirectTo } = {}) {
+        const { error } = await authClient.forgetPassword({ email, redirectTo });
+        return { error };
+      },
+      onAuthStateChange(cb) {
+        authListeners.add(cb);
+        return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } };
+      },
+    };
+
+    this.from = (table) => new QueryBuilder(table);
+
+    this.rpc = (name, params = {}) => apiJson('/api/rpc', { name, params });
+
+    this.storage = storageShim;
+
     this.files = {
       getURL: (item, field, _options = {}) => {
         if (!item || !field) return '';
@@ -354,12 +348,12 @@ class PocketBaseCompatible {
         return '';
       },
       upload: async (_bucket, _path, file) => {
-        const { data, error } = await supabase.storage.from('uploads').upload(_path, file);
+        const { data, error } = await storageShim.from('uploads').upload(_path, file);
         if (error) throw error;
         return data;
       },
       delete: async (_bucket, _path) => {
-        await supabase.storage.from('uploads').remove([_path]);
+        await storageShim.from('uploads').remove([_path]);
       },
       getBrandingUrl: (item, field = 'logo_file', _options = {}) => {
         if (!item) return '';
@@ -429,11 +423,5 @@ class PocketBaseCompatible {
   }
 }
 
-// ════════════════════════════════════════════════════════════
-// EXPORTS (interface inchangée)
-// ════════════════════════════════════════════════════════════
-
-export const pb = new PocketBaseCompatible();
-export const supabaseAuth = supabase.auth;
-export const supabaseStorage = supabase.storage;
-export default supabase;
+export const pb = new PbClient();
+export default pb;

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useStore } from 'better-auth/react';
-import { pb, supabase, authClient } from '@/lib/supabaseClient';
+import { pb, authClient } from '@/lib/pbClient';
 
 const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
@@ -11,7 +11,7 @@ const ADMIN_EMAIL = 'digihouse10@gmail.com';
 const ensureUserRow = async (authUser) => {
   let existing = null;
   try {
-    const { data } = await supabase.from('users').select('*').eq('id', authUser.id).single();
+    const { data } = await pb.from('users').select('*').eq('id', authUser.id).single();
     existing = data;
   } catch (_) {
     existing = null;
@@ -20,13 +20,13 @@ const ensureUserRow = async (authUser) => {
   if (existing) {
     // Auto-fix: main admin must always have role=admin
     if (existing.email === ADMIN_EMAIL && existing.role !== 'admin') {
-      await supabase.from('users').update({ role: 'admin' }).eq('id', existing.id);
+      await pb.from('users').update({ role: 'admin' }).eq('id', existing.id);
       return { ...existing, role: 'admin' };
     }
     // Generate referral code if missing (row created by Better Auth)
     if (!existing.referral_code) {
       const code = 'OBJ-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-      await supabase.from('users').update({ referral_code: code }).eq('id', existing.id);
+      await pb.from('users').update({ referral_code: code }).eq('id', existing.id);
       return { ...existing, referral_code: code };
     }
     return existing;
@@ -49,12 +49,12 @@ const ensureUserRow = async (authUser) => {
   };
 
   try {
-    await supabase.from('users').insert(newRow);
+    await pb.from('users').insert(newRow);
   } catch (e) {
     console.warn('ensureUserRow insert failed:', e?.message || e);
   }
 
-  const { data: created } = await supabase
+  const { data: created } = await pb
     .from('users').select('*').eq('id', authUser.id).single();
   return created;
 };
@@ -88,7 +88,7 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUser = useCallback(async () => {
     try {
-      const { data: { session: s } } = await supabase.auth.getSession();
+      const { data: { session: s } } = await pb.auth.getSession();
       if (s?.user) {
         await buildUser(s.user);
       }
@@ -172,21 +172,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   const forgotPassword = async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await pb.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reinitialiser-mot-de-passe`,
     });
     if (error) throw error;
   };
 
   const resetPassword = async (newPassword) => {
-    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    const { data, error } = await pb.auth.updateUser({ password: newPassword });
     if (error) throw error;
     return data;
   };
 
   const updateProfile = async (updates) => {
     if (!user?.id) throw new Error("Non connecté");
-    const { error } = await supabase
+    const { error } = await pb
       .from('users')
       .update({
         name: updates.name,
@@ -206,33 +206,33 @@ export const AuthProvider = ({ children }) => {
 
   const adminSetRole = async (targetUserId, newRole) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut modifier les rôles");
-    await supabase.rpc('admin_set_role', { target_user_id: targetUserId, new_role: newRole });
+    await pb.rpc('admin_set_role', { target_user_id: targetUserId, new_role: newRole });
   };
 
   const adminResetPassword = async (targetUserId) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut réinitialiser les mots de passe");
-    const result = await supabase.rpc('admin_set_password', { target_id: targetUserId, new_password: '00000000' });
+    const result = await pb.rpc('admin_set_password', { target_id: targetUserId, new_password: '00000000' });
     return result?.message || "Mot de passe réinitialisé à 00000000";
   };
 
   const adminBlockUser = async (targetUserId) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut bloquer un utilisateur");
-    await supabase.rpc('admin_block_user', { target_id: targetUserId });
+    await pb.rpc('admin_block_user', { target_id: targetUserId });
   };
 
   const adminUnblockUser = async (targetUserId) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut débloquer un utilisateur");
-    await supabase.rpc('admin_unblock_user', { target_id: targetUserId });
+    await pb.rpc('admin_unblock_user', { target_id: targetUserId });
   };
 
   const adminUpdateUserEmail = async (targetUserId, newEmail) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut modifier les emails");
-    await supabase.rpc('admin_update_user_email', { target_id: targetUserId, new_email: newEmail });
+    await pb.rpc('admin_update_user_email', { target_id: targetUserId, new_email: newEmail });
   };
 
   const adminDeleteUser = async (targetUserId) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut supprimer un utilisateur");
-    await supabase.rpc('admin_delete_user', { target_id: targetUserId });
+    await pb.rpc('admin_delete_user', { target_id: targetUserId });
   };
 
   const value = {

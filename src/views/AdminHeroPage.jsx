@@ -3,7 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, Plus, Save, Trash2, GripVertical, Image, Film } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -338,11 +338,19 @@ const AdminHeroPage = () => {
                       ) : (
                         <>
                           <div className="sm:col-span-2">
-                            <label className={label}>Ou URL de la vidéo</label>
-                            <input className={field} value={h.video_url} onChange={(e) => setItem(idx, "video_url", e.target.value)} placeholder="https://... (MP4 hébergé)" />
+                            <label className={label}>URL de la vidéo (recommandé pour les vidéos longues)</label>
+                            <input
+                              className={field}
+                              value={h.video_url}
+                              onChange={(e) => setItem(idx, "video_url", e.target.value)}
+                              placeholder="https://cdn.exemple.com/video-longue.mp4"
+                            />
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              Vidéos longues ou &gt; 25 Mo : hébergez le MP4 (Cloudinary, CDN…) puis collez l&apos;URL ici.
+                            </p>
                           </div>
                           <div className="sm:col-span-2">
-                            <label className={label}>Ou téléverser une vidéo</label>
+                            <label className={label}>Ou téléverser une vidéo (≤ 25 Mo)</label>
                             <input
                               type="file"
                               accept="video/*"

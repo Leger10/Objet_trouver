@@ -1,19 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import { DEFAULT_HERO } from "@/lib/brandingDefaults";
-import env from "@/lib/env";
-
-const SUPABASE_URL = env.VITE_SUPABASE_URL;
 
 const isVideoSrc = (h) => !!h.video_url && /^https?:\/\//i.test(h.video_url);
 
 const resolveHeroImage = (h) => {
   if (h.file_name && /^https?:\/\//i.test(h.file_name)) {
     return h.file_name;
-  }
-  if (h.file_name) {
-    return `${SUPABASE_URL}/storage/v1/object/public/branding/heroes/${h.id}/${h.file_name}`;
   }
   if (h.image_url) return h.image_url;
   return DEFAULT_HERO;

@@ -17,7 +17,7 @@ import {
   Star,
   TrendingUp,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import SponsorBanner from "@/components/SponsorBanner";
 import PullToRefresh from "@/components/PullToRefresh";

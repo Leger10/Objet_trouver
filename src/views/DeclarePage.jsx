@@ -16,7 +16,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { pb } from "@/lib/supabaseClient";
+import { pb } from "@/lib/pbClient";
 import Layout from "@/components/Layout";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -233,11 +233,11 @@ const DeclarePage = () => {
       if (photo) {
         const ext = photo.name?.split(".").pop() || "jpg";
         const fileName = `${Date.now()}.${ext}`;
-        const { data: uploaded } = await pb.supabase.storage
+        const { data: uploaded } = await pb.storage
           .from("uploads")
           .upload(fileName, photo, { cacheControl: "3600", upsert: false });
         if (uploaded) {
-          const { data: urlData } = pb.supabase.storage
+          const { data: urlData } = pb.storage
             .from("uploads")
             .getPublicUrl(uploaded.path);
           payload.photo_url = urlData?.publicUrl || "";
@@ -325,7 +325,7 @@ const DeclarePage = () => {
       console.error("Erreur déclaration:", err);
       setError(
         err?.message?.includes("row-level security")
-          ? "Erreur de permission. Vérifiez que les tables sont créées dans Supabase."
+          ? "Erreur de permission. Vérifiez la configuration du compte."
           : err?.message || "La déclaration n'a pas pu être enregistrée.",
       );
     } finally {

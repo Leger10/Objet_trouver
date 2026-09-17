@@ -47,7 +47,7 @@ temp/
 Thumbs.db
 Desktop.ini
 
-# PocketBase / Supabase
+# PocketBase
 *.pb_data
 
 # Hostinger / Horizons specific

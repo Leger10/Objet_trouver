@@ -57,9 +57,9 @@ export default function InstallPopup() {
       setInstalled(true);
       setShow(false);
       try {
-        const { supabase } = await import("@/lib/supabaseClient");
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from("app_installations").insert({
+        const { pb } = await import("@/lib/pbClient");
+        const { data: { user } } = await pb.auth.getUser();
+        await pb.from("app_installations").insert({
           user: user?.id || null,
           user_agent: navigator.userAgent,
           platform: detectPlatform(),

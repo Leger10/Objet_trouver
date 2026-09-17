@@ -33,24 +33,13 @@ npx prisma generate
 
 ⚠️ Sans `BETTER_AUTH_SECRET`, chaque function Lambda génère un secret aléatoire → déconnexions fréquentes.
 
-## 4. Migrer les anciens utilisateurs Supabase
-1. Supabase → **SQL Editor** → exécuter l'export :
-   ```sql
-   select au.id::text as id, au.email,
-     (au.email_confirmed_at is not null) as email_verified, au.created_at,
-     p.name, p.phone, p.city, p."quarter", p.referred_by, p.referral_code,
-     p.points, p.points_earned, p.plan, p.role
-   from auth.users au
-   left join public."users" p on p.id = au.id
-   order by au.created_at;
-   ```
-2. **Export → JSON** → enregistrer `users-export.json`.
-3. Importer (mot de passe provisoire commun défini par vous) :
-   ```powershell
-   node --env-file=.env scripts/import-supabase-users.mjs --file=users-export.json --password="Temp@Abcd1234"   # dry-run d'abord
-   node --env-file=.env scripts/import-supabase-users.mjs --file=users-export.json --password="Temp@Abcd1234" --apply
-   ```
-   > Les anciens mots de passe ne sont **pas** réutilisables (Supabase = bcrypt, Better Auth = scrypt). Chaque compte migré reçoit le mot de passe provisoire ; pensez à l'annoncer / faire réinitialiser.
+## 4. Migrer les anciens utilisateurs (migration terminée / optionnelle)
+
+La migration depuis l'ancien backend a été effectuée vers Better Auth + Prisma (MySQL) : les utilisateurs et mots de passe provisoires ont été réattribués lors de la bascule. Les anciens mots de passe ne sont **pas** réutilisables (Better Auth = scrypt) : chaque compte migré a reçu un mot de passe provisoire annoncé aux utilisateurs, avec réinitialisation possible.
+
+Si une nouvelle re-migration est nécessaire :
+- Exporter les lignes `users` depuis la base MySQL source (id, email, name, phone, city, quarter, referred_by…).
+- Créer les comptes via Better Auth (inscription avec mot de passe provisoire).
 
 ## 5. Vérifications finales
 - Ouvrir `https://objettrouver.netlify.app` → créer un compte + se connecter (nouveau compte OK).

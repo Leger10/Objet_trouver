@@ -1,6 +1,6 @@
 // Démarre netlify dev (fonctions sur :8888) + Vite (front sur :5173)
 // Vite proxifie /api -> localhost:8888 (voir vite.config.js)
-// L'origine locale reste :5173 -> autorisée par la CORS Supabase
+// L'origine locale reste :5173 -> autorisée par les API Next.js (CORS)
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
