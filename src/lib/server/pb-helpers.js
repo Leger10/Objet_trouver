@@ -289,8 +289,9 @@ export async function expandItems(collection, items, expandStr) {
       });
       continue;
     }
+    const queryKey = rule.key || rule.keyCol;
     const related = await prisma[rule.model].findMany({
-      where: { [rule.key]: { in: values } },
+      where: { [queryKey]: { in: values } },
     });
     const map = new Map(dbShapeMany(rule.model, related).map((r) => [r[keyCol], r]));
     items.forEach((i) => {
