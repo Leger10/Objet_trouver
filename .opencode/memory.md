@@ -34,8 +34,10 @@ Aucun service Supabase réel. @supabase/supabase-js = dep morte (package.json:26
   → PrismaValidationError 500 → catch → liste vide. Masqué en local car table declarations vide.
 - Fix : `const queryKey = rule.key || rule.keyCol` avant findMany (déclaration stocke le SLUG dans
   category). Vérif : local 200, puis prod 200 (1 décla "CNI perdu(e) à Karpala", status open).
-- Note données : table `categories` VIDE (locale + prod) ; slugs fonctionnent via CATEGORY_GROUPS en
-  fallback UI. Si vrais filtres catégorie requis → seed categories.
+- Note données : table `categories` VIDE en base -> SEED faite (commit 2ed84e3, `npm run db:seed`).
+  Les 16 catégories ont id = slug (cni, passeport, ...) pour matcher le champ category des
+  déclarations (filtres + counts). Une ancienne entrée c1 "Telephones" supprimée. Seedé en local + prod.
+  Vérif prod : expand category renvoie bien {id,slug,name} ; filtre category="cni" -> 1 résultat.
 
 ## PAIEMENTS MONEYFUSION (COMMIT 02d9b86 + 977afb3, déployés)
 - Bug #1 (500 /api/pb onBeforePay) : colonne payments.moneyfusion_token @unique ; les flux
