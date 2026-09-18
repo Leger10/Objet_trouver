@@ -26,7 +26,34 @@ Aucun service Supabase réel. @supabase/supabase-js = dep morte (package.json:26
      HeroRotator filtre slides sans media reel + NOW Ken Burns continu, resolveLogo passthrough http.
 - Local: DB MySQL UP (3306), prisma OK, serveur dev :3000 relance (debug :3001 arrete).
 
-## ACL: 
-- Il n'y a AUCUN suppabase "moteur réel" : tout l'objet supabase* est un shim. Donc pas de migration.
-- Action du moment: TUPLED list "Retrait complet" (todowrite) -> etapes: pbClient unique; purge
-  supabaseClient.js; purger SDK/env; URL longue via option URL; build+lint+commit+push+deploy+verif prod.
+## PAIEMENTS MONEYFUSION (COMMIT 02d9b86 + 977afb3, déployés)
+- Bug #1 (500 /api/pb onBeforePay) : colonne payments.moneyfusion_token @unique ; les flux
+  PaymentMethodPicker (Donate/ProAccounts/Subscriptions/Rewards) créaient le record pending AVANT
+  initPayment avec token "" -> collision UNIQUE. Fix : createPendingPayment n'écrit plus le token s'il
+  est vide, stocke rec.id dans sessionStorage "mf_pending_payment_id", et linkPendingPaymentToken(token)
+  rattache le vrai token après initPayment (appelé dans PaymentMethodPicker). webhook/activate-payment
+  matchent par moneyfusionToken => les paiements sont enfin retrouvés.
+- Bug #2 : DeclarePage:290 / PremiumPage:110 écrivaient `|| ""` -> passés à `|| null`.
+- Bug #3 : pro_accounts.create manquait business_name (NOT NULL sans défaut) -> ajouté aux 4 payloads
+  (create/update online + ussd + confirmPayment) dans ProAccountsPage.
+- Don anonyme : PaymentMethodPicker a une prop nameRequired (défaut true) ; DonatePage passe
+  nameRequired={identity !== "identified"} -> champ nom masqué, nom "Anonyme" envoyé à MoneyFusion.
+- Vérif prod : /api/pb create payments (token null) = 200 ; /api/auth/get-session = 200 ; sign-in invalide
+  = 401 (normal) ; chunks déployés contiennent "Anonyme" + "mf_pending_payment_id".
+- Reliquat : 1 ligne payments pendante avec token "" (id 9dba8aa4..., "Mise en avant") en prod, inoffensive.
+- Erreurs console login-manager/domain.ts ("can only be used on retrouvemoi.netlify.app") = extension
+  navigateur, PAS notre code (layout.jsx n'a que Google Fonts).
+
+## ETAT ACTUEL DETAILLE (mis à jour)
+- Build NEXT_OK local (Attention: stopper `next dev` avant `npm run build` -> DLL Prisma verrouillée/EPERM).
+- Deploy Netlify dernier = 977afb3 (build 6aadb3c9, live). Site: 92be6173-fa94-486a-802f-f54617189a87.
+  URL prod: https://objettrouver.netlify.app. Deploys ont parfois échoué (plugin nextjs onEnd) -> retenter.
+- Retrait Supabase TERMINE (commit bf63f6f) : README, public/sw.js, .gitignore, deno.lock, dev.mjs, deploy
+  doc, logger cleanup, ENV purgé. pas de fichiers supabase/ ; import-supabase-users.mjs supprimé.
+- Fix prisma prod (c7b9714) : prisma/schema.prisma binaryTargets = ["native","rhel-openssl-3.0.x"] (DB
+  plantait en prod sur Linux, OK en local Windows).
+- ENV .env local still present: DATABASE_URL prod Hostinger (u674176903_digihouse10 / pw @Digihouse10@2026
+  / srv1231.hstgr.io / u674176903_objettrouve). VITE_SUPABASE_* restent dans l'env Netlify (obsolète,
+  inoffensif, à purger optionnellement).
+- Local: DB MySQL (root:@127.0.0.1/objet_trouver).
+- ACL: AUCUN supabase réel, tout est shim -> pas de migration.
