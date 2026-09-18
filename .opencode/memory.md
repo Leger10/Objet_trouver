@@ -26,6 +26,17 @@ Aucun service Supabase réel. @supabase/supabase-js = dep morte (package.json:26
      HeroRotator filtre slides sans media reel + NOW Ken Burns continu, resolveLogo passthrough http.
 - Local: DB MySQL UP (3306), prisma OK, serveur dev :3000 relance (debug :3001 arrete).
 
+## BUG RECHERCHE (COMMIT d672df2, déployé 6aadc3f4, live)
+- Symptôme : la recherche de déclarations (~/rechercher) ne renvoyait rien en prod.
+- Cause : expansion `expand: "category"` (utilisée aussi par Home/Admin/Dashboard/Declaration/
+  EditDeclaration/Correspondances). Règle EXPAND_RULES.declarations.category a `keyCol:'slug'`
+  mais PAS de `key` ; expandItems faisait `where: { [rule.key]: {in: values} }` = `{ undefined: ...}`
+  → PrismaValidationError 500 → catch → liste vide. Masqué en local car table declarations vide.
+- Fix : `const queryKey = rule.key || rule.keyCol` avant findMany (déclaration stocke le SLUG dans
+  category). Vérif : local 200, puis prod 200 (1 décla "CNI perdu(e) à Karpala", status open).
+- Note données : table `categories` VIDE (locale + prod) ; slugs fonctionnent via CATEGORY_GROUPS en
+  fallback UI. Si vrais filtres catégorie requis → seed categories.
+
 ## PAIEMENTS MONEYFUSION (COMMIT 02d9b86 + 977afb3, déployés)
 - Bug #1 (500 /api/pb onBeforePay) : colonne payments.moneyfusion_token @unique ; les flux
   PaymentMethodPicker (Donate/ProAccounts/Subscriptions/Rewards) créaient le record pending AVANT
@@ -46,7 +57,7 @@ Aucun service Supabase réel. @supabase/supabase-js = dep morte (package.json:26
 
 ## ETAT ACTUEL DETAILLE (mis à jour)
 - Build NEXT_OK local (Attention: stopper `next dev` avant `npm run build` -> DLL Prisma verrouillée/EPERM).
-- Deploy Netlify dernier = 977afb3 (build 6aadb3c9, live). Site: 92be6173-fa94-486a-802f-f54617189a87.
+- Deploy Netlify dernier = d672df2 (build 6aadc3f4, live). Site: 92be6173-fa94-486a-802f-f54617189a87.
   URL prod: https://objettrouver.netlify.app. Deploys ont parfois échoué (plugin nextjs onEnd) -> retenter.
 - Retrait Supabase TERMINE (commit bf63f6f) : README, public/sw.js, .gitignore, deno.lock, dev.mjs, deploy
   doc, logger cleanup, ENV purgé. pas de fichiers supabase/ ; import-supabase-users.mjs supprimé.
