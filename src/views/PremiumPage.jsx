@@ -107,7 +107,7 @@ const PremiumPage = () => {
           total_charged: computeTotalWithFee(checkout.price),
           status: "pending",
           payment_method: "moneyfusion",
-          moneyfusion_token: result.token || "",
+          moneyfusion_token: result.token || null,
           description: `Offre ${checkout.name}`,
         });
         savePaymentContext({

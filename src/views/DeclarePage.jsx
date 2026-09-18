@@ -287,7 +287,7 @@ const DeclarePage = () => {
                 total_charged: computeTotalWithFee(500),
                 status: "pending",
                 payment_method: "moneyfusion",
-                moneyfusion_token: mfResult.token || "",
+                moneyfusion_token: mfResult.token || null,
                 description: `Mise en avant déclaration: ${rec.id}`,
               });
               savePaymentContext({
