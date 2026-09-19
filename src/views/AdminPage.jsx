@@ -56,6 +56,7 @@ import {
   UserCheck,
   X,
   Send,
+  MapPin,
 } from "lucide-react";
 
 const ALL_TABS = [
@@ -81,7 +82,7 @@ const ALL_TABS = [
 ];
 
 const AdminPage = () => {
-  const { user, isMainAdmin, adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser } = useAuth();
+  const { user, isMainAdmin, adminSetRole, adminSetZone, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser } = useAuth();
   const { branding } = useBranding();
   const isAdmin = user?.role === "admin";
   const [tab, setTab] = useState(
@@ -616,6 +617,7 @@ const AdminPage = () => {
                 setRoleBusy={setRoleBusy}
                 setResetBusy={setResetBusy}
                 adminSetRole={adminSetRole}
+                adminSetZone={adminSetZone}
                 adminResetPassword={adminResetPassword}
                 adminBlockUser={adminBlockUser}
                 adminUnblockUser={adminUnblockUser}
@@ -680,13 +682,46 @@ const AdminPage = () => {
 // TAB COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleBusy, setResetBusy, adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser, refreshUsers }) {
+function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleBusy, setResetBusy, adminSetRole, adminSetZone, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser, refreshUsers }) {
   const [search, setSearch] = useState("");
   const [editEmailTarget, setEditEmailTarget] = useState(null);
   const [editEmailValue, setEditEmailValue] = useState("");
   const [editEmailBusy, setEditEmailBusy] = useState(false);
   const [blockBusy, setBlockBusy] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(null);
+  const [zoneTarget, setZoneTarget] = useState(null);
+  const [zoneCity, setZoneCity] = useState("");
+  const [zoneQuarter, setZoneQuarter] = useState("");
+  const [zoneBusy, setZoneBusy] = useState(false);
+
+  const openZoneModal = (u) => {
+    setZoneTarget(u);
+    setZoneCity((u.city || "").trim());
+    setZoneQuarter((u.quarter || "").trim());
+  };
+
+  const saveZone = async () => {
+    if (!zoneTarget) return;
+    if (zoneTarget.role !== "admin" && !confirm(`Nommer ${zoneTarget.name || zoneTarget.email} administrateur${zoneQuarter ? ` de ${zoneQuarter}` : ` de ${zoneCity || "sa ville"}`} ?`)) return;
+    setZoneBusy(true);
+    try {
+      if (zoneTarget.role !== "admin") {
+        await adminSetRole(zoneTarget.id, "admin");
+      }
+      await adminSetZone(zoneTarget.id, zoneCity, zoneQuarter);
+      toast.success(zoneTarget.role === "admin" ? "Zone mise à jour" : `${zoneTarget.name || zoneTarget.email} nommé admin`, {
+        description: zoneQuarter
+          ? `${zoneCity || "—"} · Quartier/localité : ${zoneQuarter}`
+          : `${zoneCity || "Toute la ville"} · Périmètre ville ${zoneCity ? `de ${zoneCity}` : "national"}`,
+      });
+      setZoneTarget(null);
+      refreshUsers();
+    } catch (e) {
+      toast.error("Erreur", { description: e?.message });
+    } finally {
+      setZoneBusy(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return usersList;
@@ -771,6 +806,11 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                 <span className={`rounded-lg px-2 py-0.5 text-[10px] font-extrabold ${u.role === "admin" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                   {u.role === "admin" ? "Admin" : "User"}
                 </span>
+                {u.role === "admin" && (u.city || u.quarter) && (
+                  <span className="rounded-lg bg-accent/10 px-2 py-0.5 text-[10px] font-extrabold text-accent">
+                    {u.quarter ? `${u.quarter} (${u.city || "?"})` : u.city}
+                  </span>
+                )}
               </div>
 
               {isMainAdmin && u.email !== "digihouse10@gmail.com" && (
@@ -778,24 +818,37 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                   {/* Role toggle */}
                   <button
                     disabled={roleBusy === u.id}
-                    onClick={async () => {
-                      if (!confirm(`Mettre ${u.name || u.email} en ${u.role === "admin" ? "user" : "admin"} ?`)) return;
-                      setRoleBusy(u.id);
-                      try {
-                        const newRole = u.role === "admin" ? "user" : "admin";
-                        await adminSetRole(u.id, newRole);
-                        toast.success(`${u.name || u.email} → ${newRole}`);
-                        refreshUsers();
-                      } catch (e) {
-                        toast.error("Erreur", { description: e?.message });
-                      } finally {
-                        setRoleBusy(null);
+                    onClick={() => {
+                      if (u.role === "admin") {
+                        if (!confirm(`Rétrograder ${u.name || u.email} en utilisateur simple ?`)) return;
                       }
+                      setRoleBusy(u.id);
+                      (async () => {
+                        try {
+                          const newRole = u.role === "admin" ? "user" : "admin";
+                          await adminSetRole(u.id, newRole);
+                          toast.success(`${u.name || u.email} → ${newRole}`);
+                          refreshUsers();
+                        } catch (e) {
+                          toast.error("Erreur", { description: e?.message });
+                        } finally {
+                          setRoleBusy(null);
+                        }
+                      })();
                     }}
                     className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold disabled:opacity-40"
                   >
                     {roleBusy === u.id ? <Loader2 className="h-3 w-3 animate-spin" /> : u.role === "admin" ? <ShieldOff className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
                     {u.role === "admin" ? "Rétrograder" : "Promouvoir"}
+                  </button>
+
+                  {/* Zone (admin) : choisir ville / quartier-localité */}
+                  <button
+                    onClick={() => openZoneModal(u)}
+                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-bold"
+                  >
+                    <MapPin className="h-3 w-3" />
+                    {u.role === "admin" ? (u.quarter ? "Changer zone" : "Zone (ville)") : "Nommer avec zone"}
                   </button>
 
                   {/* Reset MDP */}
@@ -939,6 +992,97 @@ function TabUtilisateurs({ usersList, isMainAdmin, roleBusy, resetBusy, setRoleB
                 className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-40"
               >
                 {editEmailBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zone Modal (admin ville / quartier-localité) */}
+      {zoneTarget && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setZoneTarget(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-foreground">
+                {zoneTarget.role === "admin" ? "Zone de l&apos;administrateur" : "Nommer administrateur"}
+              </h3>
+              <button onClick={() => setZoneTarget(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">
+              {zoneTarget.name || zoneTarget.email} — choisissez le périmètre qu&apos;il verra dans ses statistiques.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={() => setZoneQuarter("")}
+                className={`rounded-xl border px-3 py-2 text-xs font-bold ${!zoneQuarter ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+              >
+                🏙️ Admin de ville
+              </button>
+              <button
+                onClick={() => setZoneQuarter(zoneQuarter || zoneTarget.quarter || zoneTarget.city || "")}
+                className={`rounded-xl border px-3 py-2 text-xs font-bold ${zoneQuarter ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
+              >
+                📍 Quartier / localité
+              </button>
+            </div>
+
+            <label className="text-xs font-semibold mb-1 block">Ville (périmètre)</label>
+            <input
+              type="text"
+              value={zoneCity}
+              onChange={(e) => setZoneCity(e.target.value)}
+              list="zone-cities"
+              placeholder="ex : Ouagadougou"
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30 mb-3"
+            />
+            <datalist id="zone-cities">
+              {[...new Set((usersList || []).map((u) => (u.city || "").trim()).filter(Boolean))].map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+
+            <label className="text-xs font-semibold mb-1 block">
+              Quartier / localité {zoneQuarter ? "" : "(vide = toute la ville)"}
+            </label>
+            <input
+              type="text"
+              value={zoneQuarter}
+              onChange={(e) => setZoneQuarter(e.target.value)}
+              list="zone-quarters"
+              placeholder={zoneQuarter ? "ex : Karpala" : "Laisser vide pour toute la ville"}
+              className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            />
+            <datalist id="zone-quarters">
+              {[...new Set((usersList || []).map((u) => (u.quarter || "").trim()).filter(Boolean))].map((q) => (
+                <option key={q} value={q} />
+              ))}
+            </datalist>
+
+            <p className="mt-3 text-[10px] text-muted-foreground">
+              {zoneQuarter
+                ? `Il verra uniquement les données de ${zoneQuarter}${zoneCity ? ` à ${zoneCity}` : ""}.`
+                : zoneCity
+                  ? `Il verra toutes les données de ${zoneCity}.`
+                  : "Sans ville, il verra toutes les données nationales."}
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setZoneTarget(null)}
+                className="flex-1 rounded-xl border border-border px-3 py-2 text-sm font-bold"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveZone}
+                disabled={zoneBusy}
+                className="flex-1 flex items-center justify-center gap-1 rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground disabled:opacity-40"
+              >
+                {zoneBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Enregistrer
               </button>
             </div>

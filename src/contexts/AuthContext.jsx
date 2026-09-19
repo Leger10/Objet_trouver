@@ -211,6 +211,11 @@ export const AuthProvider = ({ children }) => {
     await pb.rpc('admin_set_role', { target_user_id: targetUserId, new_role: newRole });
   };
 
+  const adminSetZone = async (targetUserId, city, quarter) => {
+    if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut définir la zone d'un admin");
+    await pb.rpc('admin_set_zone', { target_id: targetUserId, city: city || '', quarter: quarter || '' });
+  };
+
   const adminResetPassword = async (targetUserId) => {
     if (!isMainAdmin) throw new Error("Seul l'administrateur principal peut réinitialiser les mots de passe");
     const result = await pb.rpc('admin_set_password', { target_id: targetUserId, new_password: '00000000' });
@@ -242,7 +247,7 @@ export const AuthProvider = ({ children }) => {
     isAdmin, isMainAdmin,
     login, signup, logout,
     forgotPassword, resetPassword, updateProfile, refreshUser,
-    adminSetRole, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser,
+    adminSetRole, adminSetZone, adminResetPassword, adminBlockUser, adminUnblockUser, adminUpdateUserEmail, adminDeleteUser,
   };
 
   return (

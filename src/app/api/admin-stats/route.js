@@ -41,19 +41,22 @@ export async function POST(request) {
   const isMainAdmin = userRow.email === ADMIN_EMAIL && userRow.role === 'admin';
 
   // ── Périmètre de la zone ─────────────────────────────────────────────
-  // Zone admin : ville forcée sur la sienne, quartier libre à l'intérieur.
-  // Main admin : choisit n'importe quelle ville/quartier (vide = tout).
+  // Zone admin : ville forcée sur la sienne + quartier forcé s'il en a un
+  // (admin de quartier/localité). Main admin : choisit n'importe quelle
+  // ville/quartier (vide = tout).
   let city = '';
   let quarter = '';
+  let adminScopeLabel = '';
   if (!isMainAdmin) {
     city = normCity(userRow.city);
-    quarter = (body.quarter || '').trim();
+    quarter = (userRow.quarter || '').trim();
+    adminScopeLabel = quarter ? `${city} · ${quarter}` : city;
   } else {
     city = normCity(body.city);
     quarter = (body.quarter || '').trim();
   }
 
-  const scope = { city, quarter, isMainAdmin, adminId: userRow.id, adminName: userRow.name || userRow.email };
+  const scope = { city, quarter, isMainAdmin, adminId: userRow.id, adminName: userRow.name || userRow.email, adminScopeLabel };
 
   // ── Déclarations de la zone ──────────────────────────────────────────
   const declWhere = zoneWhere(city, quarter);
@@ -159,6 +162,26 @@ export async function POST(request) {
     if (d.status === 'returned') byQuarterMap[key].returned += 1;
   }
   const byQuarter = Object.values(byQuarterMap).sort((a, b) => b.total - a.total);
+
+  // Par catégorie (type d'objet)
+  const categories = await prisma.category.findMany({
+    select: { slug: true, name: true },
+  });
+  const catName = {};
+  for (const cat of categories) catName[cat.slug] = cat.name;
+
+  const byCategoryMap = {};
+  for (const d of declarations) {
+    const slug = (d.category || '').trim() || 'autre';
+    if (!byCategoryMap[slug]) {
+      byCategoryMap[slug] = { slug, name: catName[slug] || slug, total: 0, lost: 0, found: 0, returned: 0 };
+    }
+    byCategoryMap[slug].total += 1;
+    if (d.kind === 'lost') byCategoryMap[slug].lost += 1;
+    if (d.kind === 'found') byCategoryMap[slug].found += 1;
+    if (d.status === 'returned') byCategoryMap[slug].returned += 1;
+  }
+  const byCategory = Object.values(byCategoryMap).sort((a, b) => b.total - a.total);
 
   const matchesByStatus = countBy(matches, (m) => m.status || 'suggested');
   const pvsByType = countBy(pvs, (p) => p.type || 'deposit');
@@ -279,6 +302,7 @@ export async function POST(request) {
     claimsByStatus,
     byCity,
     byQuarter,
+    byCategory,
     availableCities,
     availableQuarters,
     topUsers,

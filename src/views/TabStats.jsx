@@ -1,3 +1,4 @@
+import "leaflet/dist/leaflet.css";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Building2,
@@ -11,7 +12,10 @@ import {
   Crown,
   RefreshCw,
   Filter,
+  Layers,
+  Map as MapIcon,
 } from "lucide-react";
+import { quarterCoords, cityCoords } from "@/lib/burkina-geo";
 
 const COLORS = {
   lost: "#ef4444",
@@ -73,24 +77,130 @@ function Donut({ segments, size = 150, thickness = 22, centerLabel, centerValue 
   );
 }
 
-function StackedBar({ item, max }) {
-  const lostW = max ? (item.lost / max) * 100 : 0;
-  const foundW = max ? (item.found / max) * 100 : 0;
+function DualBar({ item }) {
+  const label = item[item.__labelKey];
+  const max = Math.max(item.lost, item.found, 1);
+  const lostW = (item.lost / max) * 100;
+  const foundW = (item.found / max) * 100;
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       <div className="flex items-center justify-between text-[11px]">
         <span className="truncate font-semibold">
           <MapPin className="mr-1 inline h-3 w-3 text-muted-foreground" />
-          {item[item.__labelKey]}
+          {label}
         </span>
         <span className="ml-2 font-bold tabular-nums">{item.total}</span>
       </div>
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-muted/60">
-        <div className="h-full bg-destructive" style={{ width: `${lostW}%` }} />
-        <div className="h-full bg-emerald-500" style={{ width: `${foundW}%` }} />
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="w-9 text-right text-[10px] font-bold tabular-nums text-destructive">{item.lost}</span>
+          <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted/60">
+            <div className="h-full bg-destructive" style={{ width: `${lostW}%` }} />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-9 text-right text-[10px] font-bold tabular-nums text-emerald-500">{item.found}</span>
+          <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-muted/60">
+            <div className="h-full bg-emerald-500" style={{ width: `${foundW}%` }} />
+          </div>
+        </div>
       </div>
     </div>
   );
+}
+
+function ChartLegend() {
+  return (
+    <div className="flex items-center gap-4 text-[10px] text-muted-foreground pt-1">
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-destructive" /> Perdus</span>
+      <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Trouvés</span>
+    </div>
+  );
+}
+
+// ── Carte interactive (Leaflet, chargée uniquement côté client) ────────
+
+function ZoneMap({ points }) {
+  const containerRef = React.useRef(null);
+  const mapRef = React.useRef(null);
+  const [leaflet, setLeaflet] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    import("leaflet").then((mod) => {
+      if (!cancelled) setLeaflet(mod.default || mod);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!leaflet || !containerRef.current) return;
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    const map = leaflet.map(containerRef.current, {
+      zoomControl: true,
+      scrollWheelZoom: true,
+      attributionControl: true,
+    });
+    mapRef.current = map;
+    leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap",
+    }).addTo(map);
+
+    const markers = [];
+    points.forEach((p) => {
+      if (p.lat === undefined || p.lng === undefined) return;
+      const total = p.total || 0;
+      const radius = Math.max(8, Math.min(26, 8 + total * 2));
+      const major = p.lost > p.found ? "lost" : "found";
+      const color = major === "lost" ? "#ef4444" : "#22c55e";
+      const m = leaflet
+        .circleMarker([p.lat, p.lng], {
+          radius,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.75,
+        })
+        .bindTooltip(`${p.label} — ${total} décl. (${p.lost} perdu·e·s / ${p.found} trouvé·e·s)`, {
+          direction: "top",
+          offset: [0, -radius],
+          sticky: true,
+        })
+        .bindPopup(`
+          <div style="font-family:sans-serif;min-width:150px">
+            <strong>${p.label}</strong>
+            <div style="margin-top:4px;font-size:12px">
+              <span style="color:#ef4444;font-weight:700">${p.lost} perdu·e·s</span>
+              <span style="color:#9ca3af"> · </span>
+              <span style="color:#22c55e;font-weight:700">${p.found} trouvé·e·s</span>
+            </div>
+            <div style="margin-top:2px;font-size:12px;color:#6b7280">Total : ${total} · Restitués : ${p.returned || 0}</div>
+          </div>`);
+      m.addTo(map);
+      markers.push([p.lat, p.lng]);
+    });
+
+    if (markers.length === 0) {
+      map.setView([12.3714, -1.5197], 6);
+    } else if (markers.length === 1) {
+      map.setView(markers[0], 13);
+    } else {
+      map.fitBounds(leaflet.latLngBounds(markers).pad(0.15));
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [leaflet, points]);
+
+  return <div ref={containerRef} className="z-0 h-72 w-full rounded-2xl overflow-hidden" />;
 }
 
 function KpiCard({ icon: Icon, label, value, tint = "text-primary", bg = "bg-primary/10" }) {
@@ -114,6 +224,7 @@ export default function TabStats({ isMainAdmin }) {
   const [selCity, setSelCity] = useState("");
   const [selQuarter, setSelQuarter] = useState("");
   const [myCity, setMyCity] = useState("");
+  const [myQuarter, setMyQuarter] = useState("");
 
   const load = async (city, quarter) => {
     setLoading(true);
@@ -130,7 +241,9 @@ export default function TabStats({ isMainAdmin }) {
       setData(json);
       if (json.scope && !json.scope.isMainAdmin) {
         setMyCity(json.scope.city || "");
+        setMyQuarter(json.scope.quarter || "");
         setSelCity("");
+        setSelQuarter("");
       }
     } catch (e) {
       setError(e?.message || "Erreur de chargement");
@@ -174,6 +287,42 @@ export default function TabStats({ isMainAdmin }) {
   const t = data?.totals || {};
   const cityData = (data?.byCity || []).map((c) => ({ ...c, __labelKey: "city" }));
   const quarterData = (data?.byQuarter || []).map((q) => ({ ...q, __labelKey: "quarter" }));
+  const catData = (data?.byCategory || []).map((c) => ({ ...c, __labelKey: "name" }));
+
+  const mapPoints = useMemo(() => {
+    const pts = [];
+    const quarters = data?.byQuarter || [];
+    if (quarters.length) {
+      for (const q of quarters) {
+        const coords = quarterCoords(q.city, q.quarter);
+        if (!coords) continue;
+        pts.push({
+          lat: coords[0],
+          lng: coords[1],
+          label: `${q.quarter}${selCity ? "" : ` — ${q.city}`}`,
+          total: q.total,
+          lost: q.lost,
+          found: q.found,
+          returned: q.returned || 0,
+        });
+      }
+    } else {
+      for (const c of data?.byCity || []) {
+        const coords = cityCoords(c.city);
+        if (!coords) continue;
+        pts.push({
+          lat: coords[0],
+          lng: coords[1],
+          label: c.city,
+          total: c.total,
+          lost: c.lost,
+          found: c.found,
+          returned: c.returned || 0,
+        });
+      }
+    }
+    return pts;
+  }, [data, selCity]);
 
   return (
     <div className="space-y-4">
@@ -205,18 +354,25 @@ export default function TabStats({ isMainAdmin }) {
               <span className="truncate font-bold">{myCity || "Ma ville"}</span>
             </div>
           )}
-          <select
-            value={selQuarter}
-            onChange={(e) => setSelQuarter(e.target.value)}
-            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">{isFiltered && !selQuarter ? "Tous les quartiers" : "Quartier (tous)"}</option>
-            {filteredQuarters.map((q) => (
-              <option key={q.city + q.quarter} value={q.quarter}>
-                {q.quarter} ({q.count})
-              </option>
-            ))}
-          </select>
+          {isMainAdmin ? (
+            <select
+              value={selQuarter}
+              onChange={(e) => setSelQuarter(e.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">{isFiltered && !selQuarter ? "Tous les quartiers" : "Quartier (tous)"}</option>
+              {filteredQuarters.map((q) => (
+                <option key={q.city + q.quarter} value={q.quarter}>
+                  {q.quarter} ({q.count})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm">
+              <MapPin className="h-4 w-4 text-primary" />
+              <span className="truncate font-bold">{myQuarter || myCity || "Ma zone"}</span>
+            </div>
+          )}
         </div>
         <button
           onClick={applyFilters}
@@ -224,7 +380,12 @@ export default function TabStats({ isMainAdmin }) {
         >
           <RefreshCw className="h-3.5 w-3.5" /> Mettre à jour
         </button>
-        {isFiltered && (
+        {!isMainAdmin && (
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            Votre zone : <strong>{myQuarter ? `${myCity} · ${myQuarter}` : myCity || "—"}</strong> (données limitées à votre localité)
+          </p>
+        )}
+        {isMainAdmin && isFiltered && (
           <p className="mt-2 text-[10px] text-muted-foreground">
             {selCity && <>Ville : <strong>{selCity}</strong> · </>}
             {selQuarter && <>Quartier : <strong>{selQuarter}</strong></>}
@@ -259,7 +420,7 @@ export default function TabStats({ isMainAdmin }) {
         />
       </div>
 
-      {/* ── Déclarations par ville ── */}
+      {/* ── Répartition par ville ── */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <p className="mb-3 text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
           Répartition par ville
@@ -268,18 +429,15 @@ export default function TabStats({ isMainAdmin }) {
           <p className="text-center text-xs text-muted-foreground py-4">Aucune donnée</p>
         ) : (
           <div className="space-y-3">
-            {cityData.map((c) => (
-              <StackedBar key={c.city} item={c} max={cityData[0].total} />
+            {cityData.slice(0, 8).map((c) => (
+              <DualBar key={c.city} item={c} />
             ))}
-            <div className="flex items-center gap-4 text-[10px] text-muted-foreground pt-1">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-destructive" /> Perdus</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Trouvés</span>
-            </div>
+            <ChartLegend />
           </div>
         )}
       </div>
 
-      {/* ── Quartiers ── */}
+      {/* ── Quartiers / localités ── */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <p className="mb-3 text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
           {isFiltered ? `Quartiers de ${selCity || "la zone"}` : "Top quartiers / localités"}
@@ -289,8 +447,45 @@ export default function TabStats({ isMainAdmin }) {
         ) : (
           <div className="space-y-3">
             {quarterData.slice(0, 8).map((q) => (
-              <StackedBar key={q.city + q.quarter} item={q} max={quarterData[0].total} />
+              <DualBar key={q.city + q.quarter} item={q} />
             ))}
+            <ChartLegend />
+          </div>
+        )}
+      </div>
+
+      {/* ── Carte de la zone ── */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MapIcon className="h-4 w-4 text-primary" />
+          <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+            Carte : état réel par localité
+          </p>
+        </div>
+        <ZoneMap points={mapPoints} />
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Plus de trouvés</span>
+          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Plus de perdus</span>
+          <span className="ml-auto">Pointez les cercles pour voir les chiffres</span>
+        </div>
+      </div>
+
+      {/* ── Par catégorie ── */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Layers className="h-4 w-4 text-primary" />
+          <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+            Statistiques par catégorie
+          </p>
+        </div>
+        {catData.length === 0 ? (
+          <p className="text-center text-xs text-muted-foreground py-4">Aucune donnée</p>
+        ) : (
+          <div className="space-y-3">
+            {catData.map((c) => (
+              <DualBar key={c.slug} item={c} />
+            ))}
+            <ChartLegend />
           </div>
         )}
       </div>

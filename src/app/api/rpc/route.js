@@ -96,6 +96,23 @@ export async function POST(request) {
         return NextResponse.json({ ok: true });
       }
 
+      case 'admin_set_zone': {
+        if (caller.role !== 'admin') return errorResponse(403, 'Accès réservé aux administrateurs');
+        const { target_id, city, quarter } = params || {};
+        if (caller.email !== ADMIN_EMAIL) return errorResponse(403, "Seul l'administrateur principal peut définir la zone d'un admin");
+        const target = await prisma.user.findUnique({ where: { id: target_id } });
+        if (!target) return errorResponse(404, 'Utilisateur introuvable');
+        if (target.email === ADMIN_EMAIL) return errorResponse(403, "Impossible de modifier l'administrateur principal");
+        await prisma.user.update({
+          where: { id: target_id },
+          data: {
+            city: String(city || '').trim(),
+            quarter: String(quarter || '').trim(),
+          },
+        });
+        return NextResponse.json({ ok: true });
+      }
+
       case 'admin_set_password': {
         if (caller.role !== 'admin') return errorResponse(403, 'Accès réservé aux administrateurs');
         const { target_id, new_password } = params || {};
