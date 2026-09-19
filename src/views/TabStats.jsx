@@ -29,6 +29,30 @@ const COLORS = {
   muted: "hsl(var(--muted-foreground))",
 };
 
+// Palette pour les admins (bar chart + camembert)
+const ADMIN_COLORS = [
+  "#2563eb", // bleu
+  "#dc2626", // rouge
+  "#16a34a", // vert
+  "#f59e0b", // ambre
+  "#9333ea", // violet
+  "#0891b2", // cyan
+  "#ea580c", // orange
+  "#db2777", // rose
+  "#65a30d", // lime
+  "#475569", // ardoise
+];
+
+// Couleur déterministe par admin (basée sur son id pour rester stable)
+const colorForAdmin = (admin, index) => {
+  if (index < ADMIN_COLORS.length) return ADMIN_COLORS[index];
+  // fallback : hash sur l'id
+  const seed = String(admin?.adminId || admin?.id || admin?.email || index);
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  return ADMIN_COLORS[Math.abs(h) % ADMIN_COLORS.length];
+};
+
 // ── Petites briques de chart (SVG + CSS, sans dépendance) ────────────
 
 function Donut({ segments, size = 150, thickness = 22, centerLabel, centerValue }) {
@@ -71,8 +95,61 @@ function Donut({ segments, size = 150, thickness = 22, centerLabel, centerValue 
         {segments.map((s, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
-            <span className="text-muted-foreground flex-1">{s.label}</span>
+            <span className="text-muted-foreground flex-1 truncate max-w-[140px]">{s.label}</span>
             <span className="font-bold tabular-nums">{s.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Camembert classique (pie) avec légende à droite
+function PieChart({ segments, size = 160, centerLabel, centerValue }) {
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  const radius = size / 2;
+  let angle = -Math.PI / 2;
+  const slices = segments.map((s, i) => {
+    const frac = total ? s.value / total : 0;
+    const start = angle;
+    const end = angle + frac * 2 * Math.PI;
+    angle = end;
+    const x1 = radius + radius * Math.cos(start);
+    const y1 = radius + radius * Math.sin(start);
+    const x2 = radius + radius * Math.cos(end);
+    const y2 = radius + radius * Math.sin(end);
+    const large = frac > 0.5 ? 1 : 0;
+    const d =
+      frac >= 1
+        ? `M ${radius} ${radius} m -${radius} 0 a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 -${radius * 2} 0`
+        : `M ${radius} ${radius} L ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2} Z`;
+    return { d, color: s.color, label: s.label, value: s.value, frac };
+  });
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-5">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size}>
+          {slices.map((s, i) => (
+            <path key={i} d={s.d} fill={s.color} stroke="hsl(var(--card))" strokeWidth={2} />
+          ))}
+          {/* Trou central (donut) */}
+          <circle cx={radius} cy={radius} r={radius * 0.55} fill="hsl(var(--card))" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-extrabold">{centerValue}</span>
+          <span className="text-[10px] text-muted-foreground">{centerLabel}</span>
+        </div>
+      </div>
+      <div className="space-y-1.5 w-full">
+        {slices.map((s, i) => (
+          <div key={i} className="flex items-center gap-2 text-xs">
+            <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: s.color }} />
+            <span className="text-muted-foreground flex-1 truncate">{s.label}</span>
+            <span className="font-bold tabular-nums">{s.value}</span>
+            <span className="text-[10px] text-muted-foreground w-10 text-right">
+              {total ? Math.round(s.frac * 100) : 0}%
+            </span>
           </div>
         ))}
       </div>
@@ -117,6 +194,91 @@ function ChartLegend() {
     <div className="flex items-center gap-4 text-[10px] text-muted-foreground pt-1">
       <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-destructive" /> Perdus</span>
       <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Trouvés</span>
+    </div>
+  );
+}
+
+// ── Bar chart vertical : zones des admins ─────────────────────────────
+// Une barre = un admin. Hauteur proportionnelle au nombre de déclarations,
+// empilée Perdus (rouge) + Trouvés (vert). Couleur de fond = admin.
+
+function AdminBarChart({ admins }) {
+  const sorted = useMemo(
+    () => [...admins].sort((a, b) => (b.declarations || 0) - (a.declarations || 0)),
+    [admins],
+  );
+  const maxDecl = Math.max(...sorted.map((a) => a.declarations || 0), 1);
+  const chartHeight = 220;
+
+  return (
+    <div className="space-y-3">
+      {/* Bar chart */}
+      <div className="overflow-x-auto pb-2">
+        <div className="flex items-end gap-3 min-w-max" style={{ height: chartHeight + 60 }}>
+          {sorted.map((a, i) => {
+            const total = a.declarations || 0;
+            const barH = (total / maxDecl) * chartHeight;
+            const lostH = total ? ((a.lost || 0) / total) * barH : 0;
+            const foundH = total ? ((a.found || 0) / total) * barH : 0;
+            const color = colorForAdmin(a, i);
+
+            return (
+              <div key={a.adminId} className="flex flex-col items-center gap-1 shrink-0 w-16">
+                {/* Valeur en haut */}
+                <span className="text-[10px] font-extrabold tabular-nums text-foreground">
+                  {total}
+                </span>
+
+                {/* Barre empilée */}
+                <div
+                  className="relative w-10 rounded-t-lg overflow-hidden border border-border/40 bg-muted/40"
+                  style={{ height: barH, minHeight: 4 }}
+                  title={`${a.name} — ${total} déclarations`}
+                >
+                  {/* Trouvés en bas (vert) */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 bg-emerald-500"
+                    style={{ height: foundH }}
+                  />
+                  {/* Perdus au-dessus (rouge) */}
+                  <div
+                    className="absolute left-0 right-0 bg-destructive"
+                    style={{ bottom: foundH, height: lostH }}
+                  />
+                </div>
+
+                {/* Couleur admin : pastille */}
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: color }}
+                />
+
+                {/* Nom + zone */}
+                <div className="text-center w-16">
+                  <p className="truncate text-[10px] font-bold leading-tight" title={a.name}>
+                    {a.name?.split(" ")[0] || "—"}
+                  </p>
+                  <p className="truncate text-[9px] text-muted-foreground leading-tight">
+                    {a.city || "Toutes"}
+                    {a.quarter ? ` · ${a.quarter}` : ""}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Légende globale */}
+      <div className="flex items-center gap-4 border-t border-border pt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-destructive" /> Perdus
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" /> Trouvés
+        </span>
+        <span className="ml-auto">Hauteur = volume total de déclarations</span>
+      </div>
     </div>
   );
 }
@@ -195,8 +357,6 @@ function ZoneMap({ points, fullscreen = false }) {
       map.fitBounds(leaflet.latLngBounds(markers).pad(0.15));
     }
 
-    // Quand on entre/sort du plein écran, la taille du conteneur change :
-    // on force Leaflet à recalculer ses dimensions.
     const invalidate = () => {
       if (mapRef.current) {
         setTimeout(() => mapRef.current?.invalidateSize(), 120);
@@ -279,14 +439,12 @@ export default function TabStats({ isMainAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fermer le plein écran avec Échap
   useEffect(() => {
     if (!mapFullscreen) return;
     const onKey = (e) => {
       if (e.key === "Escape") setMapFullscreen(false);
     };
     window.addEventListener("keydown", onKey);
-    // Empêcher le scroll du body derrière l'overlay
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -304,7 +462,6 @@ export default function TabStats({ isMainAdmin }) {
 
   const isFiltered = !!selCity || !!selQuarter;
 
-  // ✅ Un seul useMemo mapPoints, déclaré avant tout return conditionnel
   const mapPoints = useMemo(() => {
     if (!data) return [];
     const pts = [];
@@ -341,6 +498,19 @@ export default function TabStats({ isMainAdmin }) {
     return pts;
   }, [data, selCity]);
 
+  // Camembert : segments par admin (basés sur le total de déclarations)
+  const adminPieSegments = useMemo(() => {
+    if (!isMainAdmin || !data?.admins?.length) return [];
+    const sorted = [...data.admins].sort(
+      (a, b) => (b.declarations || 0) - (a.declarations || 0),
+    );
+    return sorted.map((a, i) => ({
+      label: a.name || a.email || "Admin",
+      value: a.declarations || 0,
+      color: colorForAdmin(a, i),
+    }));
+  }, [data, isMainAdmin]);
+
   if (loading && !data) {
     return (
       <div className="space-y-3">
@@ -363,6 +533,8 @@ export default function TabStats({ isMainAdmin }) {
   const cityData = (data?.byCity || []).map((c) => ({ ...c, __labelKey: "city" }));
   const quarterData = (data?.byQuarter || []).map((q) => ({ ...q, __labelKey: "quarter" }));
   const catData = (data?.byCategory || []).map((c) => ({ ...c, __labelKey: "name" }));
+
+  const totalAdminDecl = adminPieSegments.reduce((s, x) => s + x.value, 0);
 
   return (
     <div className="space-y-4">
@@ -636,55 +808,87 @@ export default function TabStats({ isMainAdmin }) {
         )}
       </div>
 
-      {/* ── Vue admin principal : toutes les zones ── */}
+      {/* ── Vue admin principal : zones des administrateurs (bar chart + camembert) ── */}
       {isMainAdmin && data?.admins?.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="mb-1 text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
-            Zones des administrateurs
-          </p>
-          <p className="mb-3 text-[10px] text-muted-foreground">
-            Vue globale des données de chaque zone gérée par un admin.
-          </p>
-          <div className="space-y-2">
-            {data.admins.map((a) => (
-              <div key={a.adminId} className="rounded-xl border border-border bg-background p-3">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 truncate text-xs font-bold">
-                      <Coins className="h-3.5 w-3.5 text-accent" />
-                      {a.name}
-                    </p>
-                    <p className="truncate text-[10px] text-muted-foreground">
-                      {a.city || "Toutes"}{a.quarter ? ` · ${a.quarter}` : ""} — {a.email}
-                    </p>
-                  </div>
-                  <span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-extrabold text-primary">
-                    {a.declarations} décl.
-                  </span>
+        <>
+          {/* Bar chart vertical */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Coins className="h-4 w-4 text-accent" />
+              <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Zones des administrateurs
+              </p>
+            </div>
+            <p className="mb-4 text-[10px] text-muted-foreground">
+              Vue globale des données de chaque zone gérée par un admin.
+            </p>
+
+            {/* Totaux consolidés */}
+            <div className="mb-4 grid grid-cols-4 gap-2">
+              {[
+                {
+                  l: "Perdus",
+                  v: data.admins.reduce((s, a) => s + (a.lost || 0), 0),
+                  c: "text-destructive",
+                  bg: "bg-destructive/10",
+                },
+                {
+                  l: "Trouvés",
+                  v: data.admins.reduce((s, a) => s + (a.found || 0), 0),
+                  c: "text-emerald-600 dark:text-emerald-400",
+                  bg: "bg-emerald-500/10",
+                },
+                {
+                  l: "Corresp.",
+                  v: data.admins.reduce((s, a) => s + (a.matches || 0), 0),
+                  c: "text-accent",
+                  bg: "bg-accent/10",
+                },
+                {
+                  l: "PV",
+                  v: data.admins.reduce((s, a) => s + (a.pvs || 0), 0),
+                  c: "text-primary",
+                  bg: "bg-primary/10",
+                },
+              ].map((s) => (
+                <div key={s.l} className={`rounded-xl ${s.bg} p-2 text-center`}>
+                  <p className={`text-lg font-extrabold tabular-nums ${s.c}`}>{s.v}</p>
+                  <p className="text-[9px] font-semibold text-muted-foreground">{s.l}</p>
                 </div>
-                <div className="mt-2 grid grid-cols-4 gap-1.5 text-center">
-                  {[
-                    { l: "Perdus", v: a.lost, c: "text-destructive" },
-                    { l: "Trouvés", v: a.found, c: "text-emerald-600 dark:text-emerald-400" },
-                    { l: "Corresp.", v: a.matches, c: "text-accent" },
-                    { l: "PV", v: a.pvs, c: "text-primary" },
-                  ].map((s) => (
-                    <div key={s.l} className="rounded-lg bg-muted/50 py-1.5">
-                      <p className={`text-sm font-extrabold tabular-nums ${s.c}`}>{s.v}</p>
-                      <p className="text-[9px] font-semibold text-muted-foreground">{s.l}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            <AdminBarChart admins={data.admins} />
           </div>
-        </div>
+
+          {/* Camembert de répartition globale */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Layers className="h-4 w-4 text-primary" />
+              <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+                Répartition globale des déclarations
+              </p>
+            </div>
+            <p className="mb-3 text-[10px] text-muted-foreground">
+              Part de chaque administrateur dans le volume total de déclarations.
+            </p>
+            {adminPieSegments.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-4">Aucune donnée</p>
+            ) : (
+              <PieChart
+                segments={adminPieSegments}
+                size={170}
+                centerLabel="déclarations"
+                centerValue={totalAdminDecl}
+              />
+            )}
+          </div>
+        </>
       )}
 
       {/* ── Overlay plein écran de la carte ── */}
       {mapFullscreen && (
         <div className="fixed inset-0 z-[1000] flex flex-col bg-background">
-          {/* Header */}
           <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
             <MapIcon className="h-4 w-4 text-primary" />
             <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
@@ -708,12 +912,10 @@ export default function TabStats({ isMainAdmin }) {
             </button>
           </div>
 
-          {/* Carte */}
           <div className="relative flex-1">
             <ZoneMap points={mapPoints} fullscreen />
           </div>
 
-          {/* Footer légende */}
           <div className="flex flex-wrap items-center gap-4 border-t border-border bg-card px-4 py-2 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Plus de trouvés</span>
             <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Plus de perdus</span>
