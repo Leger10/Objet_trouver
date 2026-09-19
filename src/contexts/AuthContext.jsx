@@ -51,7 +51,9 @@ const ensureUserRow = async (authUser) => {
   try {
     await pb.from('users').insert(newRow);
   } catch (e) {
-    console.warn('ensureUserRow insert failed:', e?.message || e);
+    // P2002 = ligne créée entre-temps (course entre login et effet de session)
+    const isConflict = /unique|PRIMARY|P2002|ER_DUP_ENTRY/i.test(e?.message || '');
+    if (!isConflict) console.warn('ensureUserRow insert failed:', e?.message || e);
   }
 
   const { data: created } = await pb

@@ -49,6 +49,36 @@ for (const c of CATEGORIES) {
   }
 }
 
+// Branding par défaut (id = 'default' attendu par BrandingContext)
+// Ne crée la ligne que si absente : ne jamais écraser les réglages existants.
+const branding = await prisma.brandingSetting.findUnique({ where: { id: 'default' } });
+if (!branding) {
+  await prisma.brandingSetting.create({
+    data: {
+      id: 'default',
+      appName: 'RetrouveMoi',
+      tagline: 'DÉCLAREZ • RECHERCHEZ • RETROUVEZ',
+      logoUrl: '/images/icon-192.png',
+      colorRed: '#E63946',
+      colorGreen: '#2D6A4F',
+      colorBlue: '#001F3F',
+      colorYellow: '#FFD60A',
+      colorWhite: '#FFFFFF',
+      colorGrayLight: '#F5F5F5',
+      colorGrayDark: '#333333',
+      address: 'Locaux RetrouveMoi',
+      phone: '',
+      email: 'contact@retrouvezmoi.app',
+      hours: 'Lun – Sam, 8h – 18h',
+      currency: 'FCFA',
+      language: 'fr',
+    },
+  });
+  console.log('Branding par défaut créé : default');
+} else {
+  console.log('Branding existant conservé : default');
+}
+
 const total = await prisma.category.count();
-console.log(`Seed terminé : ${created} créées, ${updated} mises à jour, ${total} en base.`);
+console.log(`Seed terminé : ${created} créées, ${updated} mises à jour, ${total} catégories en base.`);
 await prisma.$disconnect();
