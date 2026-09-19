@@ -15,6 +15,7 @@ import {
 import { bulkRematch, isServiceActive, notify } from "@/lib/retrouve";
 import BrandLogo from "@/components/BrandLogo";
 import { useBranding } from "@/contexts/BrandingContext";
+import TabStats from "@/views/TabStats";
 import {
   ShieldAlert,
   Users as UsersIcon,
@@ -58,6 +59,7 @@ import {
 } from "lucide-react";
 
 const ALL_TABS = [
+  { key: "stats", label: "Statistiques", icon: BarChart3 },
   { key: "utilisateurs", label: "Utilisateurs", icon: UsersIcon },
   { key: "signalements", label: "Signalements", icon: AlertTriangle },
   { key: "declarations", label: "Déclarations", icon: FileCheck },
@@ -604,6 +606,7 @@ const AdminPage = () => {
         {/* ═══════════ TAB CONTENT ═══════════ */}
         {!loading && (
           <div>
+            {tab === "stats" && <TabStats isMainAdmin={isMainAdmin} />}
             {tab === "utilisateurs" && (
               <TabUtilisateurs
                 usersList={usersList}
