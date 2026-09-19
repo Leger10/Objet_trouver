@@ -14,6 +14,9 @@ import {
   Filter,
   Layers,
   Map as MapIcon,
+  Maximize2,
+  Minimize2,
+  X,
 } from "lucide-react";
 import { quarterCoords, cityCoords } from "@/lib/burkina-geo";
 
@@ -120,7 +123,7 @@ function ChartLegend() {
 
 // ── Carte interactive (Leaflet, chargée uniquement côté client) ────────
 
-function ZoneMap({ points }) {
+function ZoneMap({ points, fullscreen = false }) {
   const containerRef = React.useRef(null);
   const mapRef = React.useRef(null);
   const [leaflet, setLeaflet] = useState(null);
@@ -192,15 +195,33 @@ function ZoneMap({ points }) {
       map.fitBounds(leaflet.latLngBounds(markers).pad(0.15));
     }
 
+    // Quand on entre/sort du plein écran, la taille du conteneur change :
+    // on force Leaflet à recalculer ses dimensions.
+    const invalidate = () => {
+      if (mapRef.current) {
+        setTimeout(() => mapRef.current?.invalidateSize(), 120);
+      }
+    };
+    invalidate();
+
     return () => {
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, [leaflet, points]);
+  }, [leaflet, points, fullscreen]);
 
-  return <div ref={containerRef} className="z-0 h-72 w-full rounded-2xl overflow-hidden" />;
+  return (
+    <div
+      ref={containerRef}
+      className={
+        fullscreen
+          ? "z-0 h-full w-full"
+          : "z-0 h-72 w-full rounded-2xl overflow-hidden"
+      }
+    />
+  );
 }
 
 function KpiCard({ icon: Icon, label, value, tint = "text-primary", bg = "bg-primary/10" }) {
@@ -225,6 +246,7 @@ export default function TabStats({ isMainAdmin }) {
   const [selQuarter, setSelQuarter] = useState("");
   const [myCity, setMyCity] = useState("");
   const [myQuarter, setMyQuarter] = useState("");
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   const load = async (city, quarter) => {
     setLoading(true);
@@ -256,6 +278,22 @@ export default function TabStats({ isMainAdmin }) {
     load(selCity, selQuarter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fermer le plein écran avec Échap
+  useEffect(() => {
+    if (!mapFullscreen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMapFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    // Empêcher le scroll du body derrière l'overlay
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mapFullscreen]);
 
   const applyFilters = () => load(selCity, selQuarter);
 
@@ -463,6 +501,14 @@ export default function TabStats({ isMainAdmin }) {
           <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
             Carte : état réel par localité
           </p>
+          <button
+            type="button"
+            onClick={() => setMapFullscreen(true)}
+            className="ml-auto flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-[11px] font-bold text-primary active:scale-[0.97]"
+            aria-label="Agrandir la carte"
+          >
+            <Maximize2 className="h-3.5 w-3.5" /> Agrandir
+          </button>
         </div>
         <ZoneMap points={mapPoints} />
         <div className="mt-3 flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground">
@@ -631,6 +677,47 @@ export default function TabStats({ isMainAdmin }) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Overlay plein écran de la carte ── */}
+      {mapFullscreen && (
+        <div className="fixed inset-0 z-[1000] flex flex-col bg-background">
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
+            <MapIcon className="h-4 w-4 text-primary" />
+            <p className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">
+              Carte : état réel par localité
+            </p>
+            <button
+              type="button"
+              onClick={() => setMapFullscreen(false)}
+              className="ml-auto flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-1.5 text-[11px] font-bold text-foreground active:scale-[0.97]"
+              aria-label="Réduire la carte"
+            >
+              <Minimize2 className="h-3.5 w-3.5" /> Réduire
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapFullscreen(false)}
+              className="flex items-center justify-center rounded-xl border border-border bg-background p-2 text-foreground active:scale-[0.97]"
+              aria-label="Fermer la carte"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Carte */}
+          <div className="relative flex-1">
+            <ZoneMap points={mapPoints} fullscreen />
+          </div>
+
+          {/* Footer légende */}
+          <div className="flex flex-wrap items-center gap-4 border-t border-border bg-card px-4 py-2 text-[10px] text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Plus de trouvés</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full bg-destructive" /> Plus de perdus</span>
+            <span className="ml-auto">Pointez les cercles pour voir les chiffres · Échap pour fermer</span>
           </div>
         </div>
       )}
