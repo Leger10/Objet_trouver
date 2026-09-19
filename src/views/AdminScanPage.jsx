@@ -35,7 +35,8 @@ import {
   qrUrl,
 } from "@/lib/pv";
 import SearchableSelect from "@/components/SearchableSelect";
-import { onCompleteRestitution } from "@/lib/notificationService";
+import { onCompleteRestitution, sendPush } from "@/lib/notificationService";
+import { notify, creditRestitutionPoints } from "@/lib/retrouve";
 import EtiquetteDecl from "@/components/EtiquetteDecl";
 
 const card = "rounded-2xl border border-border bg-card p-5";
@@ -79,33 +80,30 @@ const AdminScanPage = () => {
   const [canvasRef, setCanvasRef] = useState(null);
   const [restitutionBusy, setRestitutionBusy] = useState(false);
 
-  const lookupPV = useCallback(
-    async (number) => {
-      if (!number.trim()) return;
-      setBusy(true);
-      setFoundPV(null);
-      setNotFound(false);
-      try {
-        const search = number.trim().toUpperCase();
-        const res = await pb.collection("pvs").getFullList({
-          filter: `pv_number = "${search}"`,
-          requestKey: `scan-lookup-${search}`,
-        });
-        if (res.length > 0) {
-          setFoundPV(res[0]);
-          toast.success("PV trouvé", { description: res[0].pv_number });
-        } else {
-          setNotFound(true);
-          toast.error("Aucun PV trouvé", { description: search });
-        }
-      } catch (e) {
-        toast.error("Erreur de recherche", { description: e?.message });
-      } finally {
-        setBusy(false);
+  const lookupPV = useCallback(async (number) => {
+    if (!number.trim()) return;
+    setBusy(true);
+    setFoundPV(null);
+    setNotFound(false);
+    try {
+      const search = number.trim().toUpperCase();
+      const res = await pb.collection("pvs").getFullList({
+        filter: `pv_number = "${search}"`,
+        requestKey: `scan-lookup-${search}`,
+      });
+      if (res.length > 0) {
+        setFoundPV(res[0]);
+        toast.success("PV trouvé", { description: res[0].pv_number });
+      } else {
+        setNotFound(true);
+        toast.error("Aucun PV trouvé", { description: search });
       }
-    },
-    [],
-  );
+    } catch (e) {
+      toast.error("Erreur de recherche", { description: e?.message });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const handleManualSearch = (e) => {
     e.preventDefault();
@@ -241,7 +239,6 @@ const AdminScanPage = () => {
       toast.error("Seul un PV de dépôt peut déclencher une restitution");
       return;
     }
-    // Load the associated declaration
     let decl = null;
     const declId = pv.declaration_id || pv.related_declaration || null;
     if (declId) {
@@ -260,7 +257,7 @@ const AdminScanPage = () => {
     setSignatureData("");
   };
 
-  // ── VALIDATE RESTITUTION (restitution PV scanned / queried) ──
+  // ── VALIDATE RESTITUTION ──
   const validateRestitution = async (pv) => {
     const declLabel = pv.pv_number;
     if (!window.confirm(`Valider la restitution (PV ${declLabel}) ?\nLa déclaration sera marquée « Restitué » et ne sera plus d'actualité.`)) {
@@ -289,7 +286,7 @@ const AdminScanPage = () => {
         }
       }
 
-      // 3. Marquer les déclarations « Restitué » (plus d'actualité)
+      // 3. Marquer les déclarations « Restitué »
       const targets = [relatedDecl, lostDecl].filter(Boolean);
       if (targets.length) {
         await Promise.all(
@@ -326,6 +323,28 @@ const AdminScanPage = () => {
         await onCompleteRestitution(pv, lostDecl, null).catch(() => {});
       } else if (relatedDecl) {
         await onCompleteRestitution(pv, relatedDecl, null).catch(() => {});
+      }
+
+      // 6. ★ Créditer le trouveur (+50 pts)
+      if (relatedDecl?.owner) {
+        const res = await creditRestitutionPoints({
+          pb,
+          finderUserId: relatedDecl.owner,
+          pvId: pv.id,
+          pvNumber: pv.pv_number,
+          objectTitle: relatedDecl.title,
+          notifyFn: notify,
+          pushFn: sendPush,
+        }).catch((e) => {
+          console.error("credit points error:", e);
+          return { credited: false, reason: "exception" };
+        });
+
+        if (res.credited) {
+          toast.success("+50 pts crédités au trouveur", {
+            description: relatedDecl.title || "Objet restitué",
+          });
+        }
       }
 
       toast.success("Restitution validée !", {
@@ -488,13 +507,35 @@ const AdminScanPage = () => {
         });
       } catch (_) {}
 
-      // 4. Complete restitution workflow (notifications + archiving)
+      // 4. Complete restitution workflow
       const decl = restitutionDecl || (foundPV?.declaration_id || foundPV?.related_declaration
         ? await pb.collection("declarations").getOne(foundPV?.declaration_id || foundPV?.related_declaration).catch(() => null)
         : null);
 
       if (decl) {
         await onCompleteRestitution(pvRec, decl, null);
+
+        // ★ 5. Créditer le trouveur (+50 pts)
+        if (decl.owner) {
+          const res = await creditRestitutionPoints({
+            pb,
+            finderUserId: decl.owner,
+            pvId: pvRec.id,
+            pvNumber: pvRec.pv_number,
+            objectTitle: decl.title,
+            notifyFn: notify,
+            pushFn: sendPush,
+          }).catch((e) => {
+            console.error("credit points (completeRestitution):", e);
+            return { credited: false, reason: "exception" };
+          });
+
+          if (res.credited) {
+            toast.success("+50 pts crédités au trouveur", {
+              description: decl.title || "Objet restitué",
+            });
+          }
+        }
       }
 
       toast.success("Restitution enregistrée !", {
@@ -555,7 +596,6 @@ const AdminScanPage = () => {
             </div>
           </div>
 
-          {/* Declaration info */}
           {restitutionDecl && (
             <div className={`${card} mb-4 bg-primary/5 border-primary/20`}>
               <p className="text-xs font-bold text-primary">Déclaration correspondante</p>
@@ -566,7 +606,6 @@ const AdminScanPage = () => {
             </div>
           )}
 
-          {/* Owner identity */}
           <div className={card}>
             <p className="mb-3 text-sm font-extrabold">Identité du propriétaire</p>
             <div className="space-y-3">
@@ -610,7 +649,6 @@ const AdminScanPage = () => {
             </div>
           </div>
 
-          {/* Object verification */}
           <div className={`${card} mt-4`}>
             <p className="mb-3 text-sm font-extrabold">Vérification de l'objet</p>
             <div className="space-y-3">
@@ -652,7 +690,6 @@ const AdminScanPage = () => {
             </div>
           </div>
 
-          {/* Signature */}
           <div className={`${card} mt-4`}>
             <p className="mb-3 flex items-center gap-2 text-sm font-extrabold">
               <Pen className="h-4 w-4 text-primary" />
@@ -676,7 +713,6 @@ const AdminScanPage = () => {
             )}
           </div>
 
-          {/* Submit */}
           <button
             onClick={completeRestitution}
             disabled={restitutionBusy || !signatureData}
@@ -720,7 +756,6 @@ const AdminScanPage = () => {
           </div>
         </div>
 
-        {/* QR Scanner */}
         <div className={card}>
           <div className="mb-4 flex items-center justify-between">
             <p className="flex items-center gap-2 text-sm font-extrabold">
@@ -767,7 +802,6 @@ const AdminScanPage = () => {
           )}
         </div>
 
-        {/* Manual search */}
         <div className={card}>
           <p className="mb-3 flex items-center gap-2 text-sm font-extrabold">
             <Search className="h-4 w-4 text-primary" />
@@ -792,7 +826,6 @@ const AdminScanPage = () => {
           </form>
         </div>
 
-        {/* Quick pick from list */}
         <div className={card}>
           <p className="mb-3 flex items-center gap-2 text-sm font-extrabold">
             <FileText className="h-4 w-4 text-primary" />
@@ -815,7 +848,6 @@ const AdminScanPage = () => {
           />
         </div>
 
-        {/* Result */}
         {foundPV && (
           <PVResult pv={foundPV} onStartRestitution={startRestitution} onValidateRestitution={validateRestitution} />
         )}
@@ -934,12 +966,10 @@ const PVResult = ({ pv, onStartRestitution, onValidateRestitution }) => {
         </div>
       )}
 
-      {/* Pickup etiquette for deposit PVs */}
       {isDeposit && (pv.data?.adminName || pv.location) && (
         <EtiquetteDecl pv={{ pv_number: pv.pv_number, location: pv.location, data: pv.data }} />
       )}
 
-      {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {isDeposit && pv.status !== "restitution_done" && (
           <button

@@ -266,30 +266,9 @@ export default function TabStats({ isMainAdmin }) {
 
   const isFiltered = !!selCity || !!selQuarter;
 
-  if (loading && !data) {
-    return (
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-24 animate-pulse rounded-2xl bg-muted" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm font-semibold text-destructive">
-        {error}
-      </div>
-    );
-  }
-
-  const t = data?.totals || {};
-  const cityData = (data?.byCity || []).map((c) => ({ ...c, __labelKey: "city" }));
-  const quarterData = (data?.byQuarter || []).map((q) => ({ ...q, __labelKey: "quarter" }));
-  const catData = (data?.byCategory || []).map((c) => ({ ...c, __labelKey: "name" }));
-
+  // ✅ Un seul useMemo mapPoints, déclaré avant tout return conditionnel
   const mapPoints = useMemo(() => {
+    if (!data) return [];
     const pts = [];
     const quarters = data?.byQuarter || [];
     if (quarters.length) {
@@ -323,6 +302,29 @@ export default function TabStats({ isMainAdmin }) {
     }
     return pts;
   }, [data, selCity]);
+
+  if (loading && !data) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-24 animate-pulse rounded-2xl bg-muted" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm font-semibold text-destructive">
+        {error}
+      </div>
+    );
+  }
+
+  const t = data?.totals || {};
+  const cityData = (data?.byCity || []).map((c) => ({ ...c, __labelKey: "city" }));
+  const quarterData = (data?.byQuarter || []).map((q) => ({ ...q, __labelKey: "quarter" }));
+  const catData = (data?.byCategory || []).map((c) => ({ ...c, __labelKey: "name" }));
 
   return (
     <div className="space-y-4">

@@ -55,7 +55,6 @@ const wordOverlap = (a, b) => {
 export const scoreMatch = (lost, found) => {
   const b = {};
 
-  // Category must match for a valid score
   if (!lost.category || lost.category !== found.category) {
     return { total: 0, breakdown: { categorie: 0 } };
   }
@@ -107,8 +106,6 @@ export const notify = async (
   }
 };
 
-// Achemine une demande de restitution vers l'admin le plus proche de la personne
-// (même ville) + l'admin principal (digihouse10@gmail.com).
 export const notifyAdminsOfClaim = async (item, claimantCity = "") => {
   const notified = [];
   try {
@@ -142,7 +139,6 @@ export const notifyAdminsOfClaim = async (item, claimantCity = "") => {
   return notified;
 };
 
-// Cherche les correspondances pour une nouvelle déclaration et les enregistre
 export const runMatching = async (declaration) => {
   const opposite = declaration.kind === "lost" ? "found" : "lost";
   let candidates;
@@ -177,7 +173,6 @@ export const runMatching = async (declaration) => {
         },
       );
       created.push({ ...rec, other: cand });
-      // Notification push + email au propriétaire de la déclaration perdue
       onMatchFound({ ...rec, score: total }, lost, found).catch(() => {});
     } catch (err) {
       console.error("❌ runMatching match create failed:", err);
@@ -189,15 +184,12 @@ export const runMatching = async (declaration) => {
       await pb
         .collection("declarations")
         .update(declaration.id, { status: "matched" });
-    } catch (_) {
-      /* ignore */
-    }
+    } catch (_) {}
   }
 
   return created.sort((a, b) => b.score - a.score);
 };
 
-// Ré-exécute le matching sur TOUTES les déclarations existantes
 export const bulkRematch = async (onProgress) => {
   let allDecls = [];
   let page = 1;
@@ -216,7 +208,6 @@ export const bulkRematch = async (onProgress) => {
   const founds = allDecls.filter((d) => d.kind === "found");
 
   let totalCreated = 0;
-  const totalPairs = losts.length * founds.length;
 
   for (let i = 0; i < losts.length; i++) {
     for (let j = 0; j < founds.length; j++) {
@@ -240,11 +231,9 @@ export const bulkRematch = async (onProgress) => {
         });
         totalCreated++;
 
-        // Update statuses
         await pb.collection("declarations").update(lost.id, { status: "matched" });
         await pb.collection("declarations").update(found.id, { status: "matched" });
 
-        // Notifications in-app
         await onMatchFound(
           { id: crypto.randomUUID(), score: total, lost: lost.id, found: found.id },
           lost,
@@ -258,22 +247,25 @@ export const bulkRematch = async (onProgress) => {
   return { total: totalCreated, scanned: allDecls.length };
 };
 
+// ─────────────────────────────────────────────────────────────────────
+// ── Barème officiel des points (source unique de vérité) ─────────────
+// ─────────────────────────────────────────────────────────────────────
+
+export const POINTS_REWARD_MATCH = 50;         // Correspondance confirmée
+export const POINTS_REWARD_RESTITUTION = 50;   // Restitution confirmée
+export const POINTS_REWARD_REFERRAL = 20;      // Parrainage validé
+
 export const REWARDS = [
-  { label: "Correspondance confirmée", points: "+50" },
-  { label: "Restitution confirmée", points: "+100" },
-  { label: "Parrainage validé", points: "+20" },
+  { label: "Correspondance confirmée", points: `+${POINTS_REWARD_MATCH}` },
+  { label: "Restitution confirmée",    points: `+${POINTS_REWARD_RESTITUTION}` },
+  { label: "Parrainage validé",        points: `+${POINTS_REWARD_REFERRAL}` },
 ];
 
 export const BADGES = [
-  { key: "citizen", emoji: "🥉", label: "Citoyen actif", threshold: 100 },
-  { key: "engaged", emoji: "🥈", label: "Citoyen engagé", threshold: 500 },
-  {
-    key: "exemplary",
-    emoji: "🥇",
-    label: "Citoyen exemplaire",
-    threshold: 1000,
-  },
-  { key: "ambassador", emoji: "💎", label: "Ambassadeur", threshold: 5000 },
+  { key: "citizen",    emoji: "🥉", label: "Citoyen actif",       threshold: 100 },
+  { key: "engaged",    emoji: "🥈", label: "Citoyen engagé",      threshold: 500 },
+  { key: "exemplary",  emoji: "🥇", label: "Citoyen exemplaire",  threshold: 1000 },
+  { key: "ambassador", emoji: "💎", label: "Ambassadeur",         threshold: 5000 },
 ];
 
 export const getBadge = (pointsEarned = 0) => {
@@ -286,83 +278,19 @@ export const getBadge = (pointsEarned = 0) => {
 };
 
 export const SERVICES = [
-  {
-    key: "alerts_priority",
-    label: "Alertes prioritaires",
-    desc: "Recevez les correspondances en premier",
-    cost: 500,
-    emoji: "🔔",
-    duration: 30,
-  },
-  {
-    key: "listing_boost",
-    label: "Mise en avant",
-    desc: "Votre déclaration en tête des résultats",
-    cost: 300,
-    emoji: "🚀",
-    duration: 30,
-  },
-  {
-    key: "advanced_search",
-    label: "Recherche avancée",
-    desc: "Filtres supplémentaires et export",
-    cost: 200,
-    emoji: "🔎",
-    duration: 30,
-  },
-  {
-    key: "verified_profile",
-    label: "Profil vérifié",
-    desc: "Badge de confiance sur votre profil",
-    cost: 1000,
-    emoji: "⭐",
-    duration: 365,
-  },
-  {
-    key: "priority_post",
-    label: "Publication prioritaire",
-    desc: "Déclaration traitée en priorité",
-    cost: 250,
-    emoji: "📢",
-    duration: 30,
-  },
-  {
-    key: "daily_limit_boost",
-    label: "Déclarations illimitées",
-    desc: "Augmente votre limite de déclarations par jour",
-    cost: 150,
-    emoji: "♾️",
-    duration: 30,
-  },
-  {
-    key: "advanced_filters",
-    label: "Filtres avancés",
-    desc: "Débloquez les filtres de recherche avancés",
-    cost: 200,
-    emoji: "🎛️",
-    duration: 30,
-  },
-  {
-    key: "detailed_stats",
-    label: "Statistiques détaillées",
-    desc: "Accédez à des statistiques avancées",
-    cost: 350,
-    emoji: "📊",
-    duration: 30,
-  },
-  {
-    key: "visibility_boost",
-    label: "Visibilité accrue",
-    desc: "Augmente la visibilité de vos déclarations",
-    cost: 400,
-    emoji: "👁️",
-    duration: 30,
-  },
+  { key: "alerts_priority",  label: "Alertes prioritaires",   desc: "Recevez les correspondances en premier",    cost: 500,  emoji: "🔔", duration: 30 },
+  { key: "listing_boost",    label: "Mise en avant",          desc: "Votre déclaration en tête des résultats",   cost: 300,  emoji: "🚀", duration: 30 },
+  { key: "advanced_search",  label: "Recherche avancée",      desc: "Filtres supplémentaires et export",         cost: 200,  emoji: "🔎", duration: 30 },
+  { key: "verified_profile", label: "Profil vérifié",         desc: "Badge de confiance sur votre profil",       cost: 1000, emoji: "⭐", duration: 365 },
+  { key: "priority_post",    label: "Publication prioritaire",desc: "Déclaration traitée en priorité",           cost: 250,  emoji: "📢", duration: 30 },
+  { key: "daily_limit_boost",label: "Déclarations illimitées",desc: "Augmente votre limite de déclarations/jour",cost: 150,  emoji: "♾️", duration: 30 },
+  { key: "advanced_filters", label: "Filtres avancés",        desc: "Débloquez les filtres de recherche avancés",cost: 200,  emoji: "🎛️", duration: 30 },
+  { key: "detailed_stats",   label: "Statistiques détaillées",desc: "Accédez à des statistiques avancées",       cost: 350,  emoji: "📊", duration: 30 },
+  { key: "visibility_boost", label: "Visibilité accrue",      desc: "Augmente la visibilité de vos déclarations",cost: 400,  emoji: "👁️", duration: 30 },
 ];
 
 export const serviceByKey = (key) => SERVICES.find((s) => s.key === key);
 
-// Check whether a purchase record is still active (not expired)
 export const isServiceActive = (purchase) => {
   if (!purchase || purchase.status !== "active") return false;
   if (!purchase.expires_at) return true;
@@ -376,32 +304,81 @@ export const daysLeft = (expiresAt) => {
 };
 
 export const GIFTS = [
-  {
-    key: "phone_recharge",
-    label: "Recharge téléphonique",
-    value: "500 FCFA",
-    cost: 2000,
-    emoji: "🎁",
-  },
-  {
-    key: "internet_pack",
-    label: "Forfait Internet",
-    value: "1 000 FCFA",
-    cost: 5000,
-    emoji: "🎁",
-  },
-  {
-    key: "partner_gift",
-    label: "Cadeau partenaire",
-    value: "2 000 FCFA",
-    cost: 10000,
-    emoji: "🎁",
-  },
-  {
-    key: "special_reward",
-    label: "Récompense spéciale",
-    value: "5 000 FCFA",
-    cost: 20000,
-    emoji: "💎",
-  },
+  { key: "phone_recharge", label: "Recharge téléphonique", value: "500 FCFA",   cost: 2000,  emoji: "🎁" },
+  { key: "internet_pack",  label: "Forfait Internet",      value: "1 000 FCFA", cost: 5000,  emoji: "🎁" },
+  { key: "partner_gift",   label: "Cadeau partenaire",     value: "2 000 FCFA", cost: 10000, emoji: "🎁" },
+  { key: "special_reward", label: "Récompense spéciale",   value: "5 000 FCFA", cost: 20000, emoji: "💎" },
 ];
+
+// ─────────────────────────────────────────────────────────────────────
+// ── Crédit de points après restitution ───────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Crédite le trouveur après validation d'une restitution.
+ * - Idempotent (garde-fou via points_ledger.reference_id + reason).
+ * - Best-effort : ne throw jamais, renvoie { credited, reason }.
+ */
+export async function creditRestitutionPoints({
+  pb,
+  finderUserId,
+  pvId,
+  pvNumber,
+  objectTitle,
+  notifyFn,
+  pushFn,
+}) {
+  if (!finderUserId || !pvId) {
+    return { credited: false, reason: "missing_user_or_pv" };
+  }
+
+  // Garde-fou anti-double-crédit
+  const already = await pb
+    .collection("points_ledger")
+    .getFirstListItem(
+      `reference_id = "${pvId}" && reason = "restitution_completed"`,
+      { requestKey: `credit-check-${pvId}` },
+    )
+    .catch(() => null);
+
+  if (already) return { credited: false, reason: "already_credited" };
+
+  const finder = await pb
+    .collection("users")
+    .getOne(finderUserId, { requestKey: `credit-finder-${pvId}` })
+    .catch(() => null);
+
+  if (!finder) return { credited: false, reason: "user_not_found" };
+
+  await pb.collection("users").update(finder.id, {
+    points: (finder.points || 0) + POINTS_REWARD_RESTITUTION,
+    points_earned: (finder.points_earned || 0) + POINTS_REWARD_RESTITUTION,
+  });
+
+  await pb.collection("points_ledger").create({
+    user: finder.id,
+    amount: POINTS_REWARD_RESTITUTION,
+    reason: "restitution_completed",
+    reference_id: pvId,
+    description: `Restitution PV ${pvNumber || pvId}`,
+  });
+
+  if (notifyFn) {
+    await notifyFn(
+      finder.id,
+      `🎉 +${POINTS_REWARD_RESTITUTION} points !`,
+      `Merci d'avoir ramené "${objectTitle || "l'objet"}". +${POINTS_REWARD_RESTITUTION} pts crédités (PV ${pvNumber || pvId}).`,
+      "/recompenses",
+    ).catch(() => {});
+  }
+  if (pushFn) {
+    await pushFn(
+      finder.id,
+      `🎉 +${POINTS_REWARD_RESTITUTION} points`,
+      "Restitution validée — merci !",
+      "/recompenses",
+    ).catch(() => {});
+  }
+
+  return { credited: true };
+}
