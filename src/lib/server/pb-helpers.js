@@ -281,7 +281,12 @@ export async function expandItems(collection, items, expandStr) {
     const rule = rules.find((r) => r.name === name);
     if (!rule) continue;
     const keyCol = rule.keyCol || rule.key;
-    const values = [...new Set(items.map((i) => i[rule.fk]).filter(Boolean))];
+    // Nom de colonne réel (les items sont sérialisés en snake_case via dbShape)
+    const ruleModelName = modelForCollection(collection);
+    const ruleModel = ruleModelName ? getModelInfo(ruleModelName) : null;
+    const fkScalar = ruleModel?.scalars?.[rule.fk];
+    const fkColumn = fkScalar?.dbName || rule.fk;
+    const values = [...new Set(items.map((i) => i[fkColumn] ?? i[rule.fk]).filter(Boolean))];
     if (values.length === 0) {
       items.forEach((i) => {
         i.expand = i.expand || {};
@@ -296,7 +301,8 @@ export async function expandItems(collection, items, expandStr) {
     const map = new Map(dbShapeMany(rule.model, related).map((r) => [r[keyCol], r]));
     items.forEach((i) => {
       i.expand = i.expand || {};
-      i.expand[name] = map.get(i[rule.fk]) || null;
+      const fkVal = i[fkColumn] ?? i[rule.fk];
+      i.expand[name] = map.get(fkVal) || null;
     });
   }
   return items;
