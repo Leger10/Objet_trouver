@@ -61,3 +61,6 @@ jsconfig.json
 *.tgz
 # Local Netlify folder
 .netlify
+
+# Database backups (may contain real user data)
+backups/
