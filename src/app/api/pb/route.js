@@ -15,8 +15,8 @@ import { uploadFile, FOLDERS } from '@/lib/server/cloudinary';
 
 const ADMIN_EMAIL = 'digihouse10@gmail.com';
 
-function errorResponse(status, message) {
-  return NextResponse.json({ ok: false, error: message }, { status });
+function errorResponse(status, message, extra = {}) {
+  return NextResponse.json({ ok: false, error: message, ...extra }, { status });
 }
 
 function parseFormData(form) {
@@ -128,7 +128,10 @@ export async function POST(request) {
       const where = buildWhere(model, parsePocketBaseFilter(args.filter || ''));
       const orderBy = buildOrderBy(model, args.sort);
       const row = await prisma[model].findFirst({ where, orderBy });
-      if (!row) throw new Error('Aucun enregistrement trouvé');
+      if (!row) {
+        // PocketBase renvoie 404 dans ce cas, pas 500.
+        return errorResponse(404, 'Aucun enregistrement trouvé');
+      }
       let item = dbShape(model, row);
       if (args.expand) {
         const arr = await expandItems(collection, [item], args.expand);
@@ -167,20 +170,66 @@ export async function POST(request) {
 
       const payload = toModelData(model, data);
 
+      // ── CREATE ──
       if (action === 'create') {
-        const row = await prisma[model].create({ data: payload });
-        return NextResponse.json({ ok: true, item: dbShape(model, row) });
+        // Cas spécial : si un id est fourni et existe déjà → upsert silencieux.
+        // Utile pour les créations idempotentes (auth, migrations, retry client).
+        if (payload.id) {
+          const existing = await prisma[model]
+            .findUnique({ where: { id: payload.id } })
+            .catch(() => null);
+          if (existing) {
+            // On met à jour les champs fournis, on ne touche pas au reste.
+            const updated = await prisma[model].update({
+              where: { id: payload.id },
+              data: payload,
+            });
+            return NextResponse.json({ ok: true, item: dbShape(model, updated) });
+          }
+        }
+
+        try {
+          const row = await prisma[model].create({ data: payload });
+          return NextResponse.json({ ok: true, item: dbShape(model, row) });
+        } catch (err) {
+          if (err?.code === 'P2002') {
+            // Contrainte unique (PRIMARY, email, etc.)
+            const target = Array.isArray(err?.meta?.target)
+              ? err.meta.target.join(', ')
+              : err?.meta?.target || 'champ unique';
+            return errorResponse(409, `Enregistrement déjà existant (${target})`, {
+              code: 'P2002',
+              target,
+            });
+          }
+          throw err;
+        }
       }
 
+      // ── UPDATE ──
       if (!args.id) return errorResponse(400, 'id requis pour update');
-      const row = await prisma[model].update({ where: { id: args.id }, data: payload });
-      return NextResponse.json({ ok: true, item: dbShape(model, row) });
+      try {
+        const row = await prisma[model].update({ where: { id: args.id }, data: payload });
+        return NextResponse.json({ ok: true, item: dbShape(model, row) });
+      } catch (err) {
+        if (err?.code === 'P2025') {
+          return errorResponse(404, 'Enregistrement introuvable');
+        }
+        throw err;
+      }
     }
 
     if (action === 'delete') {
       if (!args.id) return errorResponse(400, 'id requis pour delete');
-      await prisma[model].delete({ where: { id: args.id } });
-      return NextResponse.json({ ok: true, deleted: true });
+      try {
+        await prisma[model].delete({ where: { id: args.id } });
+        return NextResponse.json({ ok: true, deleted: true });
+      } catch (err) {
+        if (err?.code === 'P2025') {
+          return errorResponse(404, 'Enregistrement introuvable');
+        }
+        throw err;
+      }
     }
 
     return errorResponse(400, `Action inconnue: ${action}`);
