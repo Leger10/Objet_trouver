@@ -33,21 +33,27 @@ const ForgotPasswordPage = () => {
             <span className="font-bold text-foreground">{branding.app_name}</span>.
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Écrivez-nous à{' '}
+            Cliquez sur le bouton ci-dessous pour envoyer votre demande de réinitialisation, ou écrivez-nous directement à{' '}
             <a
-              href={`mailto:${env.VITE_ADMIN_EMAIL}?subject=${encodeURIComponent('Réinitialisation de mot de passe')}`}
+              href={`mailto:${env.VITE_ADMIN_EMAIL}`}
               className="font-bold text-primary underline underline-offset-4"
             >
               {env.VITE_ADMIN_EMAIL}
             </a>{' '}
             en précisant l'adresse email liée à votre compte.
           </p>
-          <div className="mt-6">
-            <a
-              href={`mailto:${env.VITE_ADMIN_EMAIL}?subject=${encodeURIComponent('Réinitialisation de mot de passe')}`}
+          <div className="mt-6 grid gap-2">
+            <Link
+              to="/support?subject=mot_de_passe&msg=Bonjour,%20je%20souhaiterais%20r%C3%A9initialiser%20le%20mot%20de%20passe%20de%20mon%20compte."
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3.5 text-sm font-extrabold text-primary-foreground"
             >
               Contacter l'administration
+            </Link>
+            <a
+              href={`mailto:${env.VITE_ADMIN_EMAIL}`}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-3.5 text-sm font-bold"
+            >
+              Écrire par email
             </a>
           </div>
           <Link
